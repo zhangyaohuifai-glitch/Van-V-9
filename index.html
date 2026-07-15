@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>西鐵小巴 v9.0 · 終極自然語音版</title>
+<title>西鐵小巴 v9.0 · 乘客自動同步報站</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -110,7 +110,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 
 <div class="header">
   <div class="title">西鐵小巴 v9.0</div>
-  <div class="dev-tag" id="dev-tag">🎙️ 自然語音終極版</div>
+  <div class="dev-tag" id="dev-tag">📢 乘客自動同步報站</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
 
@@ -159,7 +159,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     </div>
     <div style="margin-top:10px;color:#ccc;line-height:1.8;font-size:17px;">
       🚏 司機：登入→輸入車牌→開始當值→真實GPS自動報站<br>
-      🧍 乘客：登入→揀車追蹤→語音報站同步<br>
+      🧍 乘客：登入→揀車追蹤→開啟報站→自動同步語音<br>
       👑 管理員：登入→全面後台管理<br>
       📻 對講機：司機之間／管理員與司機即時通話
     </div>
@@ -184,7 +184,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 </div>
 
 <div id="view-passenger" class="view">
-  <button id="voice-toggle" class="btn" style="background:#ff9f0a;color:#000;font-size:22px;padding:18px;">🔊 開啟廣東話報站</button>
+  <button id="voice-toggle" class="btn" style="background:#ff9f0a;color:#000;font-size:22px;padding:18px;">🔊 開啟廣東話自動報站</button>
   <div class="card" id="pass-data-card" style="font-size:18px;">讀取中…</div>
   <div class="route-strip" id="pass-route-strip"></div>
   <div class="msg-area">
@@ -351,7 +351,9 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 <div id="toast" class="toast"></div>
 
 <script>
-// ===== FIREBASE 初始化 =====
+// ============================================================
+//  FIREBASE 初始化
+// ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCnToMYsM7pIGeGHLt5xFbQfT5RAIWzTQA",
   authDomain: "van-v9-41439.firebaseapp.com",
@@ -365,7 +367,9 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
-// ===== 全域變數 =====
+// ============================================================
+//  全域變數
+// ============================================================
 let currentUser = { uid: null, phone: null, isAdmin: false };
 let driverData = {
   mode: 'busy', direction: 0, stationIndex: 0,
@@ -376,6 +380,10 @@ let currentBusId = null;
 let gpsWatchId = null;
 let busListRef = null, passengerMsgRef = null, driverMsgRef = null, adminMsgRef = null;
 let walkieRef = null, adminWalkieRef = null;
+
+// ===== 乘客自動報站控制 =====
+let passengerVoiceEnabled = false;
+let passengerLastStationIndex = -1;
 
 // ===== 站點及經緯度 =====
 const BUSY = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","合益路","鳳翔路","元朗站H出口（朗明街）"];
@@ -405,7 +413,9 @@ const COORDS_NORMAL = [
 function getRoute() { return driverData.mode === 'busy' ? BUSY : NORMAL; }
 function getCoords() { return driverData.mode === 'busy' ? COORDS_BUSY : COORDS_NORMAL; }
 
-// ===== 工具函數 =====
+// ============================================================
+//  工具函數
+// ============================================================
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -430,7 +440,9 @@ function calcDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// ===== 設備指紋 =====
+// ============================================================
+//  設備指紋
+// ============================================================
 function collectDeviceInfo() {
   try {
     const parser = new UAParser();
@@ -467,7 +479,9 @@ async function saveDeviceInfo(uid, phone, role) {
   } catch(e) { console.warn('儲存設備指紋失敗:', e); }
 }
 
-// ===== 廣東話自然語音系統（靚聲） =====
+// ============================================================
+//  廣東話自然語音系統
+// ============================================================
 let preferredVoice = null;
 let voiceEnabled = true;
 document.getElementById('global-voice-btn').addEventListener('click', function() {
@@ -479,7 +493,6 @@ document.getElementById('global-voice-btn').addEventListener('click', function()
 
 function getCantoneseVoice() {
   if (preferredVoice) {
-    // 如果已經揀咗，但確保佢仲存在
     const allVoices = window.speechSynthesis.getVoices();
     if (allVoices.some(v => v.voiceURI === preferredVoice.voiceURI)) {
       return preferredVoice;
@@ -490,17 +503,11 @@ function getCantoneseVoice() {
   const voices = window.speechSynthesis.getVoices();
   if (!voices || voices.length === 0) return null;
   
-  // 優先次序（由最自然到最機械）
   const priorityOrder = [
-    // 1. Google 粵語（Chrome 自然聲）
     (v) => v.lang === 'zh-HK' && v.name.includes('Google'),
-    // 2. Microsoft 粵語（Edge 自然聲）
     (v) => v.lang === 'zh-HK' && v.name.includes('Microsoft'),
-    // 3. 任何包含「自然」或「Ting-Ting」嘅粵語
     (v) => v.lang === 'zh-HK' && (v.name.includes('自然') || v.name.includes('Ting-Ting')),
-    // 4. 任何粵語（zh-HK）
     (v) => v.lang === 'zh-HK',
-    // 5. 任何中文（zh 開頭）
     (v) => v.lang.startsWith('zh')
   ];
   
@@ -514,7 +521,6 @@ function getCantoneseVoice() {
   return null;
 }
 
-// 預載語音
 if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = () => { getCantoneseVoice(); };
   if (window.speechSynthesis.getVoices().length > 0) getCantoneseVoice();
@@ -528,7 +534,6 @@ function speakCantonese(text) {
     const voice = getCantoneseVoice();
     if (voice) {
       utter.voice = voice;
-      // Google 語音通常 rate 0.9 最自然
       utter.rate = 0.9;
       utter.pitch = 1.0;
     } else {
@@ -541,13 +546,14 @@ function speakCantonese(text) {
   });
 }
 
-// ===== 歡迎語音 =====
+// ============================================================
+//  歡迎語音 + 打賞
+// ============================================================
 async function playWelcomeVoice() {
   if (!voiceEnabled) return;
   await speakCantonese('歡迎使用西鐵小巴系統，祝你有一個愉快嘅旅程。請支持開發者，轉數快號碼 122891914。');
 }
 
-// ===== 打賞複製功能（含語音多謝） =====
 document.getElementById('fps-code').addEventListener('click', function() {
   const text = '122891914';
   if (navigator.clipboard) {
@@ -576,10 +582,11 @@ document.getElementById('fps-code').addEventListener('click', function() {
   }
 });
 
-// ===== 7日自動清除過期訊息 =====
+// ============================================================
+//  7日自動清除過期訊息
+// ============================================================
 function cleanupOldMessages() {
-  const cutoff = Date.now() - 7 * 24 * 3600 * 1000; // 7日前
-  // 清除 van/messages 入面過期嘅訊息
+  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
   db.ref('van/messages').once('value', snap => {
     snap.forEach(child => {
       const msg = child.val();
@@ -588,7 +595,6 @@ function cleanupOldMessages() {
       }
     });
   });
-  // 清除對講機訊息
   db.ref('van/walkie_talkie').once('value', snap => {
     snap.forEach(child => {
       const msg = child.val();
@@ -597,14 +603,13 @@ function cleanupOldMessages() {
       }
     });
   });
-  console.log('🧹 已清理超過7日嘅訊息');
 }
-// 每小時執行一次
 setInterval(cleanupOldMessages, 3600000);
-// 啟動時即執行一次
 setTimeout(cleanupOldMessages, 5000);
 
-// ===== 登入系統 =====
+// ============================================================
+//  登入系統
+// ============================================================
 function openLoginModal() {
   document.getElementById('login-modal').classList.add('active');
   document.getElementById('login-choice').style.display = 'block';
@@ -701,7 +706,9 @@ auth.onAuthStateChanged(async (user) => {
   }
 });
 
-// ===== 大堂功能 =====
+// ============================================================
+//  大堂功能
+// ============================================================
 document.getElementById('btn-passenger').addEventListener('click', () => {
   if (!currentUser.uid) { openLoginModal(); return; }
   showView('view-passenger-list');
@@ -738,7 +745,9 @@ document.getElementById('btn-guide-voice').addEventListener('click', () => {
   speakCantonese('歡迎使用西鐵小巴系統。司機請先登入，然後輸入車牌，再按開始當值。系統會自動用 GPS 定位，每到一個站就會自動報站。乘客可以追蹤車輛，收聽廣東話報站。請支持開發者，轉數快號碼 122891914。');
 });
 
-// ===== 乘客功能（完整保留） =====
+// ============================================================
+//  乘客功能（含自動同步語音報站）
+// ============================================================
 function loadBusList() {
   const container = document.getElementById('bus-list-container');
   container.innerHTML = '載入中…';
@@ -763,24 +772,60 @@ function loadBusList() {
     });
   });
 }
+
 function trackBus(plate) {
   currentBusId = plate;
   showView('view-passenger');
   const card = document.getElementById('pass-data-card');
   card.innerHTML = '讀取中…';
+  
+  // 重置乘客報站狀態
+  passengerLastStationIndex = -1;
+  
   if (passengerMsgRef) passengerMsgRef.off();
   const busRef = db.ref('van/active_buses/' + plate);
+  
   busRef.on('value', snap => {
     const bus = snap.val();
     if (!bus) { card.innerHTML = '車輛已離線'; return; }
+    
+    const currentIdx = bus.stationIndex || 0;
+    const route = bus.mode === 'busy' ? BUSY : NORMAL;
+    const currentStation = route[currentIdx] || '未知';
+    const nextIdx = currentIdx + 1 < route.length ? currentIdx + 1 : 0;
+    const nextStation = route[nextIdx] || '終點';
+    
+    // 更新 UI
     card.innerHTML = `
       <div style="font-size:24px;font-weight:bold;color:var(--gold);">🚐 ${plate}</div>
-      <div class="station-name">${bus.currentStation||'未知'}</div>
-      <div style="font-size:18px;color:var(--gold);">下一站：${bus.nextStation||'無'}</div>
+      <div class="station-name">${currentStation}</div>
+      <div style="font-size:18px;color:var(--gold);">下一站：${nextStation}</div>
       <div style="font-size:17px;">方向：${bus.direction===0?'往元朗':'往大棠'} · 👥 ${bus.passengerCount||0}人</div>
     `;
     renderPassRouteStrip(bus);
+    
+    // ===== 核心：乘客自動語音同步 =====
+    // 如果乘客報站已開啟，而且站點有變化（車輛移動咗）
+    if (passengerVoiceEnabled && currentIdx !== passengerLastStationIndex) {
+      passengerLastStationIndex = currentIdx;
+      
+      // 先播「到達 XX」
+      speakCantonese('到達 ' + currentStation);
+      
+      // 2 秒後播「下一站 YY」
+      if (nextStation !== '終點') {
+        setTimeout(() => {
+          speakCantonese('下一站 ' + nextStation);
+        }, 2000);
+      } else {
+        setTimeout(() => {
+          speakCantonese('已到達總站');
+        }, 2000);
+      }
+    }
   });
+  
+  // 監聽訊息（同之前一樣）
   passengerMsgRef = db.ref('van/messages').orderByChild('busId').equalTo(plate);
   passengerMsgRef.on('value', snap => {
     const list = document.getElementById('pass-msg-list');
@@ -803,6 +848,7 @@ function trackBus(plate) {
     });
   });
 }
+
 function renderPassRouteStrip(bus) {
   const strip = document.getElementById('pass-route-strip');
   strip.innerHTML = '';
@@ -818,6 +864,48 @@ function renderPassRouteStrip(bus) {
     strip.appendChild(node);
   });
 }
+
+// ===== 乘客語音開關（修正顏色 + 功能） =====
+document.getElementById('voice-toggle').addEventListener('click', function() {
+  passengerVoiceEnabled = !passengerVoiceEnabled;
+  if (passengerVoiceEnabled) {
+    // 開咗：變綠色
+    this.style.background = 'var(--green)';
+    this.style.color = '#fff';
+    this.textContent = '🔊 廣東話自動報站 (已開啟)';
+    showToast('✅ 自動報站已開啟');
+    // 如果已經有追蹤緊嘅車，立即播當前站
+    if (currentBusId) {
+      const busRef = db.ref('van/active_buses/' + currentBusId);
+      busRef.once('value', snap => {
+        const bus = snap.val();
+        if (bus) {
+          const route = bus.mode === 'busy' ? BUSY : NORMAL;
+          const idx = bus.stationIndex || 0;
+          const currentStation = route[idx] || '未知';
+          const nextIdx = idx + 1 < route.length ? idx + 1 : 0;
+          const nextStation = route[nextIdx] || '終點';
+          passengerLastStationIndex = idx;
+          speakCantonese('到達 ' + currentStation);
+          if (nextStation !== '終點') {
+            setTimeout(() => speakCantonese('下一站 ' + nextStation), 2000);
+          } else {
+            setTimeout(() => speakCantonese('已到達總站'), 2000);
+          }
+        }
+      });
+    }
+  } else {
+    // 關咗：變返黃色
+    this.style.background = '#ff9f0a';
+    this.style.color = '#000';
+    this.textContent = '🔊 開啟廣東話自動報站';
+    passengerLastStationIndex = -1;
+    showToast('⏸️ 自動報站已關閉');
+  }
+});
+
+// ===== 乘客訊息 =====
 document.getElementById('btn-pass-send').addEventListener('click', () => {
   const input = document.getElementById('pass-msg-input');
   const text = input.value.trim();
@@ -834,16 +922,23 @@ document.getElementById('btn-pass-clear').addEventListener('click', () => {
 });
 document.getElementById('btn-back-list').addEventListener('click', () => {
   if (busListRef) busListRef.off();
+  passengerVoiceEnabled = false;
+  const btn = document.getElementById('voice-toggle');
+  btn.style.background = '#ff9f0a';
+  btn.style.color = '#000';
+  btn.textContent = '🔊 開啟廣東話自動報站';
+  passengerLastStationIndex = -1;
   showView('view-passenger-list'); loadBusList();
 });
 document.getElementById('btn-back-track').addEventListener('click', () => {
   if (passengerMsgRef) passengerMsgRef.off();
+  passengerVoiceEnabled = false;
+  const btn = document.getElementById('voice-toggle');
+  btn.style.background = '#ff9f0a';
+  btn.style.color = '#000';
+  btn.textContent = '🔊 開啟廣東話自動報站';
+  passengerLastStationIndex = -1;
   showView('view-passenger-list'); loadBusList();
-});
-document.getElementById('voice-toggle').addEventListener('click', function() {
-  const name = document.querySelector('#pass-data-card .station-name');
-  if (name) speakCantonese('下一站 ' + name.textContent);
-  else showToast('請先選擇車輛');
 });
 
 // ===== 錄音功能 =====
@@ -909,7 +1004,9 @@ bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
   db.ref('van/messages').push({ busId:currentBusId, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
 });
 
-// ===== 司機功能（完整保留） =====
+// ============================================================
+//  司機功能（完整保留，同之前一樣）
+// ============================================================
 function initDriverPanel() {
   if (!driverData.plate) {
     const plate = prompt('請輸入車牌號碼 (例如：AB1234)');
@@ -1271,7 +1368,9 @@ bindRecordBtn('btn-walkie-record', 'walkie-timer', (base64) => {
   }).then(() => showToast('對講機語音已發送'));
 });
 
-// ===== 管理後台 =====
+// ============================================================
+//  管理後台（完整保留）
+// ============================================================
 function loadAdminPanel() {
   db.ref('van/active_buses').on('value', snap => {
     const data = snap.val() || {};
@@ -1463,7 +1562,7 @@ document.getElementById('btn-clear-announce').addEventListener('click', () => {
   showToast('已清除公告');
 });
 
-// ===== 管理員對講機（含清除功能） =====
+// ===== 管理員對講機 =====
 function initAdminWalkie() {
   if (!currentUser.isAdmin) return;
   updateAdminWalkieTargets();
@@ -1500,7 +1599,6 @@ function updateAdminWalkieTargets() {
     select.innerHTML = html;
   });
 }
-// 清除所有對講機訊息
 document.getElementById('btn-clear-walkie').addEventListener('click', () => {
   if (!currentUser.isAdmin) { showToast('權限不足'); return; }
   if (!confirm('⚠️ 確定清除所有對講機訊息？')) return;
@@ -1610,7 +1708,9 @@ document.getElementById('btn-clear-all-msgs').addEventListener('click', () => {
   showToast('已清除全部訊息');
 });
 
-// ===== 閒置 15 秒返回 =====
+// ============================================================
+//  閒置 15 秒返回
+// ============================================================
 let idleTimer = null;
 function resetIdleTimer() {
   clearTimeout(idleTimer);
@@ -1632,7 +1732,9 @@ const obs = new MutationObserver(() => {
 });
 obs.observe(driverViewObserve, { attributes: true, attributeFilter: ['class'] });
 
-// ===== 公告系統 =====
+// ============================================================
+//  公告系統
+// ============================================================
 function checkAnnounce() {
   db.ref('van/announcements').limitToLast(1).on('value', snap => {
     if (snap.val()) {
@@ -1680,11 +1782,13 @@ function loadAnnounceList() {
   });
 }
 
-// ===== 初始化 =====
+// ============================================================
+//  初始化
+// ============================================================
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 終極自然語音版已啟動');
+console.log('西鐵小巴 v9.0 乘客自動同步報站版已啟動');
 </script>
 </body>
 </html>
