@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>西鐵小巴 v9.0 · 終極完整版</title>
+<title>西鐵小巴 v9.0 · 靚聲終極版</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -352,10 +352,44 @@ function showView(id) {
 function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function decodeBase64(str) { try { return atob(str); } catch(e) { return ''; } }
 
-// ===== 語音系統（廣東話） =====
+// ===== 靚聲語音系統（直接採用 v8.6 嘅引擎） =====
 let speechSynth = window.speechSynthesis;
 let voiceEnabled = true;
 let utterance = null;
+let preferredVoice = null;
+
+// 自動揀選最好聽嘅語音（優先 Google / Microsoft 女聲）
+function getPreferredVoice() {
+    if (preferredVoice) return preferredVoice;
+    const voices = speechSynth.getVoices();
+    if (!voices || voices.length === 0) return null;
+    
+    // 優先：廣東話女聲 -> 普通話女聲 -> 任何中文
+    const candidates = voices.filter(v => 
+        (v.lang.startsWith('zh') || v.lang.startsWith('cmn')) &&
+        (v.name.includes('Female') || v.name.includes('女') || 
+         v.name.includes('Google') || v.name.includes('Microsoft') || 
+         v.name.includes('自然') || v.name.includes('Zira'))
+    );
+    
+    if (candidates.length > 0) {
+        const top = candidates.find(v => 
+            v.name.includes('Google') || v.name.includes('Microsoft') || 
+            v.name.includes('自然') || v.name.includes('Zira')
+        );
+        preferredVoice = top || candidates[0];
+    } else {
+        const anyChinese = voices.find(v => v.lang.startsWith('zh'));
+        preferredVoice = anyChinese || null;
+    }
+    return preferredVoice;
+}
+
+// 預載語音
+if (speechSynth) {
+    speechSynth.onvoiceschanged = () => { getPreferredVoice(); };
+    if (speechSynth.getVoices().length > 0) getPreferredVoice();
+}
 
 document.getElementById('global-voice-btn').addEventListener('click', function() {
   voiceEnabled = !voiceEnabled;
@@ -364,81 +398,134 @@ document.getElementById('global-voice-btn').addEventListener('click', function()
   showToast(voiceEnabled ? '語音已開啟' : '語音已關閉');
 });
 
-function speak(text, lang = 'zh-HK') {
-  if (!voiceEnabled || !window.speechSynthesis) return;
-  if (utterance) speechSynth.cancel();
-  utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
-  utterance.rate = 0.9;
-  utterance.pitch = 1;
-  utterance.onend = () => { utterance = null; };
-  speechSynth.speak(utterance);
+// 播報文字（靚聲版）
+function speakText(text, lang = 'zh-HK') {
+  if (!voiceEnabled || !speechSynth) return Promise.resolve();
+  return new Promise((resolve) => {
+    if (utterance) speechSynth.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
+    const voice = getPreferredVoice();
+    if (voice) utter.voice = voice;
+    utter.rate = 0.9;
+    utter.pitch = 1;
+    utter.onend = () => resolve();
+    utter.onerror = () => resolve();
+    speechSynth.speak(utter);
+  });
 }
 
-function speakStation(stationName) {
-  speak('即將到達 ' + stationName);
+// 順序播報（到達 + 下一站）
+async function speakArrivalAndNext(currentStation, nextStation) {
+  if (!voiceEnabled) return;
+  // 先報到達
+  await speakText(`到達 ${currentStation}`);
+  // 延遲 2 秒再報下一站
+  setTimeout(() => {
+    if (nextStation) {
+      speakText(`下一站 ${nextStation}`);
+    } else {
+      speakText('已到達總站');
+    }
+  }, 2000);
 }
 
-// ===== 錄音功能 =====
-let mediaRecorder = null, audioChunks = [], recordingTimer = null, recSeconds = 0;
-function startRecording(btn, timerEl, callback) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showToast('不支援錄音'); return;
-  }
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        if (callback) callback(base64);
-        showToast('錄音完成');
-      };
-      reader.readAsDataURL(blob);
-      btn.classList.remove('recording');
-      if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
-      clearInterval(recordingTimer);
-      recordingTimer = null;
-    };
-    mediaRecorder.start();
-    btn.classList.add('recording');
-    recSeconds = 0;
-    if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
-    recordingTimer = setInterval(() => {
-      recSeconds++;
-      if (timerEl) timerEl.textContent = recSeconds + 's';
-    }, 1000);
-  }).catch(err => showToast('無法開啟咪高峰'));
-}
-function stopRecording(btn, timerEl) {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+// ===== 前進到下一站（連語音） =====
+async function goToNextStation() {
+  const route = getRoute();
+  if (driverData.stationIndex < route.length - 1) {
+    driverData.stationIndex++;
+    updateDriverDB();
+    const currentStation = route[driverData.stationIndex];
+    const nextIdx = driverData.stationIndex + 1;
+    const nextStation = nextIdx < route.length ? route[nextIdx] : null;
+    await speakArrivalAndNext(currentStation, nextStation);
+  } else {
+    showToast('已到總站，自動調頭');
+    driverData.direction = driverData.direction === 0 ? 1 : 0;
+    driverData.stationIndex = 0;
+    updateDriverDB();
+    speakText('已調頭，返回起點');
   }
 }
-function bindRecordBtn(btnId, timerId, callback) {
-  const btn = document.getElementById(btnId);
-  const timer = document.getElementById(timerId);
-  let longPress = null;
-  btn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    longPress = setTimeout(() => startRecording(btn, timer, callback), 500);
-  });
-  btn.addEventListener('pointerup', (e) => {
-    e.preventDefault();
-    clearTimeout(longPress);
-    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
-  });
-  btn.addEventListener('pointerleave', () => {
-    clearTimeout(longPress);
-    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
+
+// ===== 上一站（連語音） =====
+async function goToPrevStation() {
+  const route = getRoute();
+  if (driverData.stationIndex > 0) {
+    driverData.stationIndex--;
+    updateDriverDB();
+    const currentStation = route[driverData.stationIndex];
+    const nextIdx = driverData.stationIndex + 1;
+    const nextStation = nextIdx < route.length ? route[nextIdx] : null;
+    await speakArrivalAndNext(currentStation, nextStation);
+  } else {
+    showToast('已係起點');
+  }
+}
+
+// ===== 更新 UI & DB =====
+function updateDriverUI() {
+  const route = getRoute();
+  const idx = driverData.stationIndex || 0;
+  const station = route[idx] || '未知';
+  const nextIdx = idx+1 < route.length ? idx+1 : 0;
+  const nextStation = route[nextIdx] || '終點';
+  document.getElementById('d-info').textContent = `🚐 ${driverData.plate||'未設定'} | 手機: ${currentUser.phone||'未登入'}`;
+  document.getElementById('d-station').textContent = station;
+  document.getElementById('d-target').textContent = '下一站：' + nextStation;
+  document.getElementById('d-pass-count').textContent = driverData.passengerCount;
+  document.getElementById('d-mode-badge').textContent = driverData.mode==='busy' ? '繁忙時段' : '非繁忙時段';
+  document.getElementById('d-dir-badge').textContent = driverData.direction===0 ? '往元朗' : '往大棠';
+  const fullBtn = document.getElementById('d-full-btn');
+  if (driverData.isFull) { fullBtn.style.background='var(--red)'; fullBtn.textContent='✅ 滿座'; }
+  else { fullBtn.style.background='var(--green)'; fullBtn.textContent='🚫 滿座'; }
+  document.getElementById('d-car-btn').textContent = driverData.carSeats + '座';
+  renderDriverRouteStrip();
+}
+
+function renderDriverRouteStrip() {
+  const strip = document.getElementById('d-route-strip');
+  strip.innerHTML = '';
+  const route = getRoute();
+  const idx = driverData.stationIndex || 0;
+  route.forEach((name, i) => {
+    const node = document.createElement('div');
+    node.className = 'dot-node';
+    if (i < idx) node.classList.add('passed');
+    else if (i === idx) node.classList.add('current');
+    else if (i === idx + 1) node.classList.add('next');
+    node.innerHTML = `<div class="dot"></div><span>${name.length>6?name.slice(0,6)+'…':name}</span>`;
+    strip.appendChild(node);
   });
 }
 
-// ===== 登入系統 =====
+function updateDriverDB() {
+  const route = getRoute();
+  const idx = driverData.stationIndex || 0;
+  const currentStation = route[idx] || '未知';
+  const nextIdx = idx+1 < route.length ? idx+1 : 0;
+  const nextStation = route[nextIdx] || '終點';
+  const data = {
+    plate: driverData.plate,
+    mode: driverData.mode,
+    direction: driverData.direction,
+    stationIndex: idx,
+    currentStation: currentStation,
+    nextStation: nextStation,
+    passengerCount: driverData.passengerCount,
+    isActive: driverData.isActive,
+    carSeats: driverData.carSeats,
+    isFull: driverData.isFull,
+    lastUpdate: Date.now()
+  };
+  if (driverData.plate) {
+    db.ref('van/active_buses/'+driverData.plate).update(data);
+  }
+  updateDriverUI();
+}
+
+// ===== 登入系統（同上，省略重複） =====
 function openLoginModal() {
   document.getElementById('login-modal').classList.add('active');
   document.getElementById('login-choice').style.display = 'block';
@@ -552,12 +639,11 @@ document.getElementById('btn-generate-qr').addEventListener('click', () => {
   new QRCode(document.getElementById('qrcode-container'), { text: window.location.href, width:180, height:180 });
   box.querySelector('button').addEventListener('click', () => { box.style.display = 'none'; });
 });
-
 document.getElementById('btn-guide-voice').addEventListener('click', () => {
-  speak('歡迎使用西鐵小巴系統。司機請先登入，然後輸入車牌，再按開始當值。系統會自動用 GPS 定位，每到一個站就會自動報站。乘客可以追蹤車輛，收聽廣東話報站。');
+  speakText('歡迎使用西鐵小巴系統。司機請先登入，然後輸入車牌，再按開始當值。系統會自動用 GPS 定位，每到一個站就會自動報站。乘客可以追蹤車輛，收聽廣東話報站。');
 });
 
-// ===== 乘客功能 =====
+// ===== 乘客功能（簡化，保留原有） =====
 function loadBusList() {
   const container = document.getElementById('bus-list-container');
   container.innerHTML = '載入中…';
@@ -661,17 +747,74 @@ document.getElementById('btn-back-track').addEventListener('click', () => {
 });
 document.getElementById('voice-toggle').addEventListener('click', function() {
   const name = document.querySelector('#pass-data-card .station-name');
-  if (name) speak('下一站 ' + name.textContent);
+  if (name) speakText('下一站 ' + name.textContent);
   else showToast('請先選擇車輛');
 });
+
+// 錄音功能（簡化）
+let mediaRecorder = null, audioChunks = [], recordingTimer = null, recSeconds = 0;
+function startRecording(btn, timerEl, callback) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('不支援錄音'); return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        if (callback) callback(base64);
+        showToast('錄音完成');
+      };
+      reader.readAsDataURL(blob);
+      btn.classList.remove('recording');
+      if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
+      clearInterval(recordingTimer);
+      recordingTimer = null;
+    };
+    mediaRecorder.start();
+    btn.classList.add('recording');
+    recSeconds = 0;
+    if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
+    recordingTimer = setInterval(() => {
+      recSeconds++;
+      if (timerEl) timerEl.textContent = recSeconds + 's';
+    }, 1000);
+  }).catch(err => showToast('無法開啟咪高峰'));
+}
+function stopRecording(btn, timerEl) {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+}
+function bindRecordBtn(btnId, timerId, callback) {
+  const btn = document.getElementById(btnId);
+  const timer = document.getElementById(timerId);
+  let longPress = null;
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    longPress = setTimeout(() => startRecording(btn, timer, callback), 500);
+  });
+  btn.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    clearTimeout(longPress);
+    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
+  });
+  btn.addEventListener('pointerleave', () => {
+    clearTimeout(longPress);
+    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
+  });
+}
 bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
   if (!currentBusId) return;
   db.ref('van/messages').push({ busId:currentBusId, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
 });
 
-// ============================================================
-//  司機功能（完整 GPS + 語音報站，即時同步乘客）
-// ============================================================
+// ===== 司機功能 =====
 function initDriverPanel() {
   if (!driverData.plate) {
     const plate = prompt('請輸入車牌號碼 (例如：AB1234)');
@@ -722,95 +865,6 @@ function initDriverPanel() {
   document.getElementById('stop-gps').style.display = driverData.isActive ? 'block' : 'none';
 }
 
-function updateDriverUI() {
-  const route = getRoute();
-  const idx = driverData.stationIndex || 0;
-  const station = route[idx] || '未知';
-  const nextIdx = idx+1 < route.length ? idx+1 : 0;
-  const nextStation = route[nextIdx] || '終點';
-  document.getElementById('d-info').textContent = `🚐 ${driverData.plate||'未設定'} | 手機: ${currentUser.phone||'未登入'}`;
-  document.getElementById('d-station').textContent = station;
-  document.getElementById('d-target').textContent = '下一站：' + nextStation;
-  document.getElementById('d-pass-count').textContent = driverData.passengerCount;
-  document.getElementById('d-mode-badge').textContent = driverData.mode==='busy' ? '繁忙時段' : '非繁忙時段';
-  document.getElementById('d-dir-badge').textContent = driverData.direction===0 ? '往元朗' : '往大棠';
-  const fullBtn = document.getElementById('d-full-btn');
-  if (driverData.isFull) { fullBtn.style.background='var(--red)'; fullBtn.textContent='✅ 滿座'; }
-  else { fullBtn.style.background='var(--green)'; fullBtn.textContent='🚫 滿座'; }
-  document.getElementById('d-car-btn').textContent = driverData.carSeats + '座';
-  renderDriverRouteStrip();
-}
-
-function renderDriverRouteStrip() {
-  const strip = document.getElementById('d-route-strip');
-  strip.innerHTML = '';
-  const route = getRoute();
-  const idx = driverData.stationIndex || 0;
-  route.forEach((name, i) => {
-    const node = document.createElement('div');
-    node.className = 'dot-node';
-    if (i < idx) node.classList.add('passed');
-    else if (i === idx) node.classList.add('current');
-    else if (i === idx + 1) node.classList.add('next');
-    node.innerHTML = `<div class="dot"></div><span>${name.length>6?name.slice(0,6)+'…':name}</span>`;
-    strip.appendChild(node);
-  });
-}
-
-function updateDriverDB() {
-  const route = getRoute();
-  const idx = driverData.stationIndex || 0;
-  const currentStation = route[idx] || '未知';
-  const nextIdx = idx+1 < route.length ? idx+1 : 0;
-  const nextStation = route[nextIdx] || '終點';
-  const data = {
-    plate: driverData.plate,
-    mode: driverData.mode,
-    direction: driverData.direction,
-    stationIndex: idx,
-    currentStation: currentStation,
-    nextStation: nextStation,
-    passengerCount: driverData.passengerCount,
-    isActive: driverData.isActive,
-    carSeats: driverData.carSeats,
-    isFull: driverData.isFull,
-    lastUpdate: Date.now()
-  };
-  if (driverData.plate) {
-    db.ref('van/active_buses/'+driverData.plate).update(data);
-  }
-  updateDriverUI();
-}
-
-// 上一站／下一站
-document.getElementById('btn-prev').addEventListener('click', () => {
-  if (!driverData.isActive) { showToast('請先開始當值'); return; }
-  const route = getRoute();
-  if (driverData.stationIndex > 0) {
-    driverData.stationIndex--;
-    updateDriverDB();
-    speak('到達 ' + route[driverData.stationIndex]);
-  } else {
-    showToast('已係起點');
-  }
-});
-
-document.getElementById('btn-next').addEventListener('click', () => {
-  if (!driverData.isActive) { showToast('請先開始當值'); return; }
-  const route = getRoute();
-  if (driverData.stationIndex < route.length - 1) {
-    driverData.stationIndex++;
-    updateDriverDB();
-    speakStation(route[driverData.stationIndex]);
-  } else {
-    showToast('已到總站，自動調頭');
-    driverData.direction = driverData.direction === 0 ? 1 : 0;
-    driverData.stationIndex = 0;
-    updateDriverDB();
-    speak('已調頭，返回 ' + route[0]);
-  }
-});
-
 document.getElementById('btn-add-pass').addEventListener('click', () => {
   if (!driverData.isActive) { showToast('請先開始當值'); return; }
   driverData.passengerCount++;
@@ -835,7 +889,7 @@ document.getElementById('btn-switch-dir').addEventListener('click', () => {
   const route = getRoute();
   driverData.stationIndex = route.length - 1 - driverData.stationIndex;
   updateDriverDB();
-  speak('已調頭');
+  speakText('已調頭');
 });
 document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   driverData.mode = driverData.mode==='busy' ? 'normal' : 'busy';
@@ -844,20 +898,21 @@ document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   showToast('已切換路線');
 });
 
-// ===== 開始當值 (高精準度 GPS + 自動報站) =====
+// ===== 上一站／下一站（使用新語音） =====
+document.getElementById('btn-prev').addEventListener('click', goToPrevStation);
+document.getElementById('btn-next').addEventListener('click', goToNextStation);
+
+// ===== 開始當值（高精準度 GPS + 自動報站） =====
 document.getElementById('start-gps').addEventListener('click', () => {
   if (!driverData.plate) { showToast('請先設定車牌'); return; }
-  
   if (!navigator.geolocation) {
     showToast('瀏覽器不支援 GPS');
     return;
   }
-  
-  // 開始 GPS 追蹤（高精準度）
+  // 高精準度 GPS
   gpsWatchId = navigator.geolocation.watchPosition(
     (position) => {
       console.log('GPS 更新:', position.coords.latitude, position.coords.longitude);
-      // 呢度可以加入距離計算，但暫時用定時器模擬
     },
     (error) => {
       console.warn('GPS 錯誤:', error);
@@ -868,30 +923,18 @@ document.getElementById('start-gps').addEventListener('click', () => {
   
   driverData.isActive = true;
   updateDriverDB();
-  
   if (gpsInterval) clearInterval(gpsInterval);
-  // 每 15 秒自動前進一站（模擬 GPS 移動），並語音報站
+  // 每 15 秒自動前進一站
   gpsInterval = setInterval(() => {
     if (driverData.isActive) {
-      const route = getRoute();
-      if (driverData.stationIndex < route.length - 1) {
-        driverData.stationIndex++;
-        updateDriverDB();
-        speakStation(route[driverData.stationIndex]);
-      } else {
-        showToast('已到總站，自動調頭');
-        driverData.direction = driverData.direction === 0 ? 1 : 0;
-        driverData.stationIndex = 0;
-        updateDriverDB();
-        speak('已調頭，返回 ' + route[0]);
-      }
+      goToNextStation();
     }
   }, 15000);
   
   document.getElementById('start-gps').style.display = 'none';
   document.getElementById('stop-gps').style.display = 'block';
   showToast('🟢 已開始當值，GPS 追蹤中');
-  speak('開始當值，GPS 定位完成');
+  speakText('開始當值，GPS 定位完成');
 });
 
 document.getElementById('stop-gps').addEventListener('click', () => {
@@ -902,10 +945,10 @@ document.getElementById('stop-gps').addEventListener('click', () => {
   document.getElementById('start-gps').style.display = 'block';
   document.getElementById('stop-gps').style.display = 'none';
   showToast('🔴 已停止當值');
-  speak('已停止當值');
+  speakText('已停止當值');
 });
 
-// 司機訊息
+// 司機訊息（保留）
 document.getElementById('btn-driver-send').addEventListener('click', () => {
   const input = document.getElementById('driver-msg-input');
   const text = input.value.trim();
@@ -956,9 +999,7 @@ bindRecordBtn('btn-driver-record-overlay', 'driver-timer-overlay', (base64) => {
   db.ref('van/messages').push({ busId:driverData.plate, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
 });
 
-// ============================================================
-//  管理後台
-// ============================================================
+// ===== 管理後台 =====
 function loadAdminPanel() {
   db.ref('van/active_buses').on('value', snap => {
     const data = snap.val() || {};
@@ -1000,7 +1041,6 @@ function loadAdminPanel() {
   loadAdminAnnounce();
 }
 
-// 封鎖
 function loadBans() {
   db.ref('van/banned_drivers').on('value', snap => {
     const data = snap.val() || {};
@@ -1028,7 +1068,6 @@ document.getElementById('btn-ban-passenger').addEventListener('click', () => {
   if (name) { db.ref('van/banned_passengers/'+name).set(true); document.getElementById('admin-ban-pass').value=''; showToast('已封鎖 '+name); }
 });
 
-// 踢出
 document.getElementById('btn-kick-vehicle').addEventListener('click', () => {
   const id = document.getElementById('admin-kick-vehicle').value.trim();
   if (!id) return;
@@ -1070,7 +1109,6 @@ document.getElementById('btn-kick-passenger').addEventListener('click', () => {
   document.getElementById('admin-kick-passenger').value = '';
 });
 
-// 公告
 function loadAdminAnnounce() {
   db.ref('van/announcements').orderByChild('timestamp').limitToLast(20).on('value', snap => {
     const container = document.getElementById('admin-announce-list');
@@ -1104,7 +1142,6 @@ document.getElementById('btn-clear-announce').addEventListener('click', () => {
   showToast('已清除公告');
 });
 
-// 廣播
 document.getElementById('btn-admin-broadcast-send').addEventListener('click', () => {
   const input = document.getElementById('admin-broadcast-input');
   const text = input.value.trim();
@@ -1241,7 +1278,7 @@ function loadAnnounceList() {
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 終極完整版已啟動（移除預填密碼、修正燈號與同步）');
+console.log('西鐵小巴 v9.0 靚聲終極版已啟動');
 </script>
 </body>
 </html>
