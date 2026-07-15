@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>西鐵小巴 v9.0 · 廣東話終極版</title>
+<title>西鐵小巴 v9.0 · 終極自然語音版</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -110,7 +110,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 
 <div class="header">
   <div class="title">西鐵小巴 v9.0</div>
-  <div class="dev-tag" id="dev-tag">🎙️ 廣東話終極版</div>
+  <div class="dev-tag" id="dev-tag">🎙️ 自然語音終極版</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
 
@@ -301,6 +301,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     <div class="admin-section" id="admin-section-walkie">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <span style="font-size:18px;font-weight:700;color:var(--purple);">📻 管理員對講機</span>
+        <button class="btn btn-red" id="btn-clear-walkie" style="width:auto;padding:8px 16px;font-size:14px;">🗑️ 清除所有</button>
       </div>
       <div class="row">
         <select id="admin-walkie-target" style="flex:1;padding:14px;border-radius:12px;border:none;font-size:18px;background:#2c2c2e;color:#fff;">
@@ -466,7 +467,7 @@ async function saveDeviceInfo(uid, phone, role) {
   } catch(e) { console.warn('儲存設備指紋失敗:', e); }
 }
 
-// ===== 廣東話語音系統（強制粵語） =====
+// ===== 廣東話自然語音系統（靚聲） =====
 let preferredVoice = null;
 let voiceEnabled = true;
 document.getElementById('global-voice-btn').addEventListener('click', function() {
@@ -477,26 +478,40 @@ document.getElementById('global-voice-btn').addEventListener('click', function()
 });
 
 function getCantoneseVoice() {
-  if (preferredVoice) return preferredVoice;
+  if (preferredVoice) {
+    // 如果已經揀咗，但確保佢仲存在
+    const allVoices = window.speechSynthesis.getVoices();
+    if (allVoices.some(v => v.voiceURI === preferredVoice.voiceURI)) {
+      return preferredVoice;
+    }
+    preferredVoice = null;
+  }
   if (!window.speechSynthesis) return null;
   const voices = window.speechSynthesis.getVoices();
   if (!voices || voices.length === 0) return null;
   
-  // 優先：廣東話 (zh-HK) 且包含 Google/Microsoft/自然/Ting-Ting
-  let candidates = voices.filter(v => 
-    v.lang === 'zh-HK' && 
-    (v.name.includes('Google') || v.name.includes('Microsoft') || v.name.includes('自然') || v.name.includes('Ting-Ting'))
-  );
-  if (candidates.length === 0) {
-    // 次選：任何 zh-HK
-    candidates = voices.filter(v => v.lang === 'zh-HK');
+  // 優先次序（由最自然到最機械）
+  const priorityOrder = [
+    // 1. Google 粵語（Chrome 自然聲）
+    (v) => v.lang === 'zh-HK' && v.name.includes('Google'),
+    // 2. Microsoft 粵語（Edge 自然聲）
+    (v) => v.lang === 'zh-HK' && v.name.includes('Microsoft'),
+    // 3. 任何包含「自然」或「Ting-Ting」嘅粵語
+    (v) => v.lang === 'zh-HK' && (v.name.includes('自然') || v.name.includes('Ting-Ting')),
+    // 4. 任何粵語（zh-HK）
+    (v) => v.lang === 'zh-HK',
+    // 5. 任何中文（zh 開頭）
+    (v) => v.lang.startsWith('zh')
+  ];
+  
+  for (const condition of priorityOrder) {
+    const found = voices.find(condition);
+    if (found) {
+      preferredVoice = found;
+      return found;
+    }
   }
-  if (candidates.length === 0) {
-    // 三選：任何 zh 開頭
-    candidates = voices.filter(v => v.lang.startsWith('zh'));
-  }
-  preferredVoice = candidates[0] || null;
-  return preferredVoice;
+  return null;
 }
 
 // 預載語音
@@ -511,9 +526,15 @@ function speakCantonese(text) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-HK';
     const voice = getCantoneseVoice();
-    if (voice) utter.voice = voice;
-    utter.rate = 0.9;
-    utter.pitch = 1.0;
+    if (voice) {
+      utter.voice = voice;
+      // Google 語音通常 rate 0.9 最自然
+      utter.rate = 0.9;
+      utter.pitch = 1.0;
+    } else {
+      utter.rate = 0.9;
+      utter.pitch = 1.0;
+    }
     utter.onend = () => resolve();
     utter.onerror = () => resolve();
     window.speechSynthesis.speak(utter);
@@ -526,12 +547,13 @@ async function playWelcomeVoice() {
   await speakCantonese('歡迎使用西鐵小巴系統，祝你有一個愉快嘅旅程。請支持開發者，轉數快號碼 122891914。');
 }
 
-// ===== 打賞複製功能 =====
+// ===== 打賞複製功能（含語音多謝） =====
 document.getElementById('fps-code').addEventListener('click', function() {
   const text = '122891914';
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
       showToast('✅ 已複製轉數快號碼：' + text);
+      speakCantonese('多謝支持');
     }).catch(() => {
       const input = document.createElement('input');
       input.value = text;
@@ -540,6 +562,7 @@ document.getElementById('fps-code').addEventListener('click', function() {
       document.execCommand('copy');
       document.body.removeChild(input);
       showToast('✅ 已複製轉數快號碼：' + text);
+      speakCantonese('多謝支持');
     });
   } else {
     const input = document.createElement('input');
@@ -549,8 +572,37 @@ document.getElementById('fps-code').addEventListener('click', function() {
     document.execCommand('copy');
     document.body.removeChild(input);
     showToast('✅ 已複製轉數快號碼：' + text);
+    speakCantonese('多謝支持');
   }
 });
+
+// ===== 7日自動清除過期訊息 =====
+function cleanupOldMessages() {
+  const cutoff = Date.now() - 7 * 24 * 3600 * 1000; // 7日前
+  // 清除 van/messages 入面過期嘅訊息
+  db.ref('van/messages').once('value', snap => {
+    snap.forEach(child => {
+      const msg = child.val();
+      if (msg.timestamp && msg.timestamp < cutoff) {
+        child.ref.remove();
+      }
+    });
+  });
+  // 清除對講機訊息
+  db.ref('van/walkie_talkie').once('value', snap => {
+    snap.forEach(child => {
+      const msg = child.val();
+      if (msg.timestamp && msg.timestamp < cutoff) {
+        child.ref.remove();
+      }
+    });
+  });
+  console.log('🧹 已清理超過7日嘅訊息');
+}
+// 每小時執行一次
+setInterval(cleanupOldMessages, 3600000);
+// 啟動時即執行一次
+setTimeout(cleanupOldMessages, 5000);
 
 // ===== 登入系統 =====
 function openLoginModal() {
@@ -686,7 +738,7 @@ document.getElementById('btn-guide-voice').addEventListener('click', () => {
   speakCantonese('歡迎使用西鐵小巴系統。司機請先登入，然後輸入車牌，再按開始當值。系統會自動用 GPS 定位，每到一個站就會自動報站。乘客可以追蹤車輛，收聽廣東話報站。請支持開發者，轉數快號碼 122891914。');
 });
 
-// ===== 乘客功能 =====
+// ===== 乘客功能（完整保留） =====
 function loadBusList() {
   const container = document.getElementById('bus-list-container');
   container.innerHTML = '載入中…';
@@ -857,7 +909,7 @@ bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
   db.ref('van/messages').push({ busId:currentBusId, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
 });
 
-// ===== 司機功能 =====
+// ===== 司機功能（完整保留） =====
 function initDriverPanel() {
   if (!driverData.plate) {
     const plate = prompt('請輸入車牌號碼 (例如：AB1234)');
@@ -1411,6 +1463,7 @@ document.getElementById('btn-clear-announce').addEventListener('click', () => {
   showToast('已清除公告');
 });
 
+// ===== 管理員對講機（含清除功能） =====
 function initAdminWalkie() {
   if (!currentUser.isAdmin) return;
   updateAdminWalkieTargets();
@@ -1447,6 +1500,15 @@ function updateAdminWalkieTargets() {
     select.innerHTML = html;
   });
 }
+// 清除所有對講機訊息
+document.getElementById('btn-clear-walkie').addEventListener('click', () => {
+  if (!currentUser.isAdmin) { showToast('權限不足'); return; }
+  if (!confirm('⚠️ 確定清除所有對講機訊息？')) return;
+  db.ref('van/walkie_talkie').remove().then(() => {
+    showToast('✅ 已清除所有對講機訊息');
+  });
+});
+
 bindRecordBtn('btn-admin-walkie-record', 'admin-walkie-timer', (base64) => {
   const target = document.getElementById('admin-walkie-target')?.value || 'all';
   if (!currentUser.isAdmin) { showToast('權限不足'); return; }
@@ -1622,7 +1684,7 @@ function loadAnnounceList() {
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 廣東話終極版已啟動');
+console.log('西鐵小巴 v9.0 終極自然語音版已啟動');
 </script>
 </body>
 </html>
