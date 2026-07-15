@@ -455,6 +455,10 @@ let walkieRef = null, adminWalkieRef = null;
 let passengerVoiceEnabled = false;
 let passengerLastStationIndex = -1;
 
+// 修復：管理現有 listener 嘅變數
+let announceListenerRef = null;   // 公告實時監聽
+let deviceListRef = null;        // 設備列表監聽
+
 // ===== 站點及經緯度 =====
 const BUSY = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","合益路","鳳翔路","元朗站H出口（朗明街）"];
 const NORMAL = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","教育路麥當勞","鄉議局中學","大球場","元朗廣場","余仁生（大馬路）","家居站","元朗站H出口（朗明街）","鳳翔路","合益路","富達廣場(回程)","蝶翠峰(回程)","禮修村公廁(回程)","深涌村(回程)","崇正公立學校(回程)","紅棗田(回程)","南坑村(回程)","南坑排(回程)","曉門(回程)","水蕉新村(回程)","大棠村迴旋處(回程)","大棠山路(回程)","大棠黃泥墩(終點站)"];
@@ -484,8 +488,24 @@ function getRoute() { return driverData.mode === 'busy' ? BUSY : NORMAL; }
 function getCoords() { return driverData.mode === 'busy' ? COORDS_BUSY : COORDS_NORMAL; }
 
 // ============================================================
-//  工具函數
+//  工具函數 (修復 unescape 廢棄)
 // ============================================================
+function encodeBase64(str) {
+  try {
+    return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  } catch (e) {
+    // 後備
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+}
+function decodeBase64(str) {
+  try {
+    return new TextDecoder().decode(Uint8Array.from(atob(str), c => c.charCodeAt(0)));
+  } catch (e) {
+    return decodeURIComponent(escape(atob(str)));
+  }
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -496,9 +516,9 @@ function showToast(msg) {
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // 修復：根據視圖控制閒置計時器
+  resetIdleTimer();
 }
-function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
-function decodeBase64(str) { try { return atob(str); } catch(e) { return ''; } }
 function calcDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -653,8 +673,14 @@ document.getElementById('fps-code').addEventListener('click', function() {
 });
 
 // ============================================================
-//  7日自動清除過期訊息
+//  7日自動清除過期訊息 (修復: 單一 interval)
 // ============================================================
+let cleanupInterval = null;
+function startCleanup() {
+  if (cleanupInterval) clearInterval(cleanupInterval);
+  cleanupInterval = setInterval(cleanupOldMessages, 3600000);
+  cleanupOldMessages();
+}
 function cleanupOldMessages() {
   const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
   db.ref('van/messages').once('value', snap => {
@@ -674,8 +700,7 @@ function cleanupOldMessages() {
     });
   });
 }
-setInterval(cleanupOldMessages, 3600000);
-setTimeout(cleanupOldMessages, 5000);
+startCleanup();
 
 // ============================================================
 //  登入系統
@@ -802,6 +827,8 @@ document.getElementById('btn-logout').addEventListener('click', () => {
   document.getElementById('btn-admin-panel').style.display = 'none';
   showToast('已登出');
   showView('view-lobby');
+  // 清除所有 listener
+  cleanupAllListeners();
 });
 document.getElementById('btn-generate-qr').addEventListener('click', () => {
   const box = document.getElementById('qr-box');
@@ -920,7 +947,7 @@ function renderPassRouteStrip(bus) {
   });
 }
 
-// ===== 乘客語音開關（修正：放大咗） =====
+// ===== 乘客語音開關 =====
 document.getElementById('voice-toggle').addEventListener('click', function() {
   passengerVoiceEnabled = !passengerVoiceEnabled;
   if (passengerVoiceEnabled) {
@@ -994,73 +1021,97 @@ document.getElementById('btn-back-track').addEventListener('click', () => {
 });
 
 // ============================================================
-//  錄音功能
+//  錄音功能 (修復：每個按鈕獨立 recorder)
 // ============================================================
-let mediaRecorder = null, audioChunks = [], recordingTimer = null, recSeconds = 0;
-function startRecording(btn, timerEl, callback) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showToast('不支援錄音'); return;
-  }
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        if (callback) callback(base64);
-        showToast('錄音完成');
-      };
-      reader.readAsDataURL(blob);
+function createRecorder() {
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let stream = null;
+
+  return {
+    start(btn, timerEl, callback) {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('不支援錄音'); return;
+      }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+        stream = s;
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            if (callback) callback(base64);
+            showToast('錄音完成');
+          };
+          reader.readAsDataURL(blob);
+          btn.classList.remove('recording');
+          if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
+          clearInterval(recordingTimer);
+          recordingTimer = null;
+          stream.getTracks().forEach(t => t.stop());
+        };
+        mediaRecorder.start();
+        btn.classList.add('recording');
+        let recSeconds = 0;
+        if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
+        const recordingTimer = setInterval(() => {
+          recSeconds++;
+          if (timerEl) timerEl.textContent = recSeconds + 's';
+        }, 1000);
+        btn._timer = recordingTimer; // 儲存以便清除
+      }).catch(err => showToast('無法開啟咪高峰'));
+    },
+    stop(btn) {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+      if (btn._timer) {
+        clearInterval(btn._timer);
+        btn._timer = null;
+      }
       btn.classList.remove('recording');
-      if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
-      clearInterval(recordingTimer);
-      recordingTimer = null;
-    };
-    mediaRecorder.start();
-    btn.classList.add('recording');
-    recSeconds = 0;
-    if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
-    recordingTimer = setInterval(() => {
-      recSeconds++;
-      if (timerEl) timerEl.textContent = recSeconds + 's';
-    }, 1000);
-  }).catch(err => showToast('無法開啟咪高峰'));
+    }
+  };
 }
-function stopRecording(btn, timerEl) {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-    mediaRecorder.stream.getTracks().forEach(t => t.stop());
-  }
-}
+
 function bindRecordBtn(btnId, timerId, callback) {
+  const recorder = createRecorder();
   const btn = document.getElementById(btnId);
   const timer = document.getElementById(timerId);
   let longPress = null;
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    longPress = setTimeout(() => startRecording(btn, timer, callback), 500);
+    longPress = setTimeout(() => recorder.start(btn, timer, callback), 500);
   });
   btn.addEventListener('pointerup', (e) => {
     e.preventDefault();
     clearTimeout(longPress);
-    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
+    recorder.stop(btn);
   });
   btn.addEventListener('pointerleave', () => {
     clearTimeout(longPress);
-    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
+    recorder.stop(btn);
+  });
+  // 修復：增加 touchcancel 支持
+  btn.addEventListener('touchcancel', () => {
+    clearTimeout(longPress);
+    recorder.stop(btn);
   });
 }
+
 bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
   if (!currentBusId) return;
   db.ref('van/messages').push({ busId:currentBusId, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
 });
 
 // ============================================================
-//  司機功能
+//  司機功能 (修復手動報站同步 lastReportedIndex)
 // ============================================================
+let lastReportedIndex = -1;
+
 function initDriverPanel() {
   if (!driverData.plate) {
     const plate = prompt('請輸入車牌號碼 (例如：AB1234)');
@@ -1169,11 +1220,11 @@ function updateDriverDB() {
   updateDriverUI();
 }
 
-let lastReportedIndex = -1;
 async function goToNextStation() {
   const route = getRoute();
   if (driverData.stationIndex < route.length - 1) {
     driverData.stationIndex++;
+    lastReportedIndex = driverData.stationIndex;  // 修復：同步 GPS 索引
     updateDriverDB();
     const currentStation = route[driverData.stationIndex];
     const nextIdx = driverData.stationIndex + 1;
@@ -1188,6 +1239,7 @@ async function goToNextStation() {
     showToast('已到總站，自動調頭');
     driverData.direction = driverData.direction === 0 ? 1 : 0;
     driverData.stationIndex = 0;
+    lastReportedIndex = -1;
     updateDriverDB();
     speakCantonese('已調頭，返回起點');
   }
@@ -1196,6 +1248,7 @@ async function goToPrevStation() {
   const route = getRoute();
   if (driverData.stationIndex > 0) {
     driverData.stationIndex--;
+    lastReportedIndex = driverData.stationIndex;  // 修復：同步 GPS 索引
     updateDriverDB();
     const currentStation = route[driverData.stationIndex];
     const nextIdx = driverData.stationIndex + 1;
@@ -1250,7 +1303,7 @@ document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   showToast('已切換路線');
 });
 
-// ===== 真實 GPS =====
+// ===== 真實 GPS (修復：頁面卸載清理) =====
 document.getElementById('start-gps').addEventListener('click', () => {
   if (!driverData.plate) { showToast('請先設定車牌'); return; }
   if (!navigator.geolocation) { showToast('瀏覽器不支援 GPS'); return; }
@@ -1314,6 +1367,18 @@ document.getElementById('stop-gps').addEventListener('click', () => {
   document.getElementById('d-gps-status').textContent = '📍 GPS 已停止';
   showToast('🔴 已停止當值');
   speakCantonese('已停止當值');
+});
+
+// 修復：頁面卸載時清理 GPS 並更新狀態
+window.addEventListener('beforeunload', () => {
+  if (gpsWatchId) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+  }
+  if (driverData.plate && driverData.isActive) {
+    // 使用 sendBeacon 或直接 set 可能會被瀏覽器取消，但嘗試更新
+    db.ref('van/active_buses/' + driverData.plate).update({ isActive: false, lastUpdate: Date.now() });
+  }
 });
 
 // ===== 司機訊息 =====
@@ -1425,9 +1490,10 @@ bindRecordBtn('btn-walkie-record', 'walkie-timer', (base64) => {
 });
 
 // ============================================================
-//  管理後台
+//  管理後台 (修復 listener leak)
 // ============================================================
 function loadAdminPanel() {
+  // 監控在線車輛
   db.ref('van/active_buses').on('value', snap => {
     const data = snap.val() || {};
     let count = 0, totalPass = 0;
@@ -1440,6 +1506,8 @@ function loadAdminPanel() {
     document.getElementById('admin-active-count').textContent = count;
     document.getElementById('admin-passenger-count').textContent = totalPass;
   });
+  
+  // 訊息監控（移除舊 listener）
   if (adminMsgRef) adminMsgRef.off();
   adminMsgRef = db.ref('van/messages').orderByChild('timestamp').limitToLast(100);
   adminMsgRef.on('value', snap => {
@@ -1462,14 +1530,18 @@ function loadAdminPanel() {
     container.innerHTML = html || '<div style="color:#888;text-align:center;padding:12px;font-size:16px;">暫無訊息</div>';
     document.getElementById('admin-msg-count').textContent = msgCount;
   });
+  
   loadDeviceList();
   loadBans();
   loadAdminAnnounce();
 }
 
 function loadDeviceList() {
+  // 修復：先移除舊 listener
+  if (deviceListRef) deviceListRef.off();
   const container = document.getElementById('admin-device-list');
-  db.ref('user_devices').on('value', snap => {
+  deviceListRef = db.ref('user_devices');
+  deviceListRef.on('value', snap => {
     const data = snap.val() || {};
     let html = '';
     for (const uid in data) {
@@ -1760,41 +1832,36 @@ document.querySelectorAll('.admin-tab').forEach(tab => {
   });
 });
 document.getElementById('btn-back-admin').addEventListener('click', () => showView('view-lobby'));
-document.getElementById('btn-clear-all-msgs').addEventListener('click', () => {
-  if (!confirm('⚠️ 確定清除所有訊息？')) return;
-  db.ref('van/messages').remove();
-  showToast('已清除全部訊息');
-});
 
 // ============================================================
-//  閒置 15 秒返回
+//  閒置返回 (修復：司機頁面延長至5分鐘)
 // ============================================================
 let idleTimer = null;
 function resetIdleTimer() {
   clearTimeout(idleTimer);
-  if (document.getElementById('view-driver').classList.contains('active')) {
-    idleTimer = setTimeout(() => {
-      showView('view-passenger-list');
-      loadBusList();
-      showToast('閒置 15 秒，自動返回乘客頁面');
-    }, 15000);
-  }
+  const activeView = document.querySelector('.view.active');
+  if (!activeView) return;
+  // 司機頁面延長閒置時間
+  const idleTime = activeView.id === 'view-driver' ? 300000 : 15000;
+  idleTimer = setTimeout(() => {
+    showView('view-passenger-list');
+    loadBusList();
+    showToast('閒置後自動返回乘客頁面');
+  }, idleTime);
 }
 document.addEventListener('touchstart', resetIdleTimer);
 document.addEventListener('click', resetIdleTimer);
 document.addEventListener('mousemove', resetIdleTimer);
-const driverViewObserve = document.getElementById('view-driver');
-const obs = new MutationObserver(() => {
-  if (driverViewObserve.classList.contains('active')) resetIdleTimer();
-  else clearTimeout(idleTimer);
-});
-obs.observe(driverViewObserve, { attributes: true, attributeFilter: ['class'] });
+// 無需 MutationObserver，直接用事件控制
 
 // ============================================================
-//  ⭐ 公告系統（已徹底修復）
+//  ⭐ 公告系統 (修復 listener leak)
 // ============================================================
 function checkAnnounce() {
-  db.ref('van/announcements').limitToLast(1).on('value', snap => {
+  // 移除舊 listener
+  if (announceListenerRef) announceListenerRef.off();
+  announceListenerRef = db.ref('van/announcements').limitToLast(1);
+  announceListenerRef.on('value', snap => {
     if (snap.val()) {
       document.getElementById('floating-announce-btn').classList.add('has-new');
       document.getElementById('announce-bell').classList.add('has-announce');
@@ -1827,9 +1894,20 @@ function loadAnnounceList() {
   });
 }
 
-// ===== 公告按鈕事件綁定（已確認有效） =====
+// 修復：清理所有重要 listener (供登出等場合使用)
+function cleanupAllListeners() {
+  if (announceListenerRef) announceListenerRef.off();
+  if (deviceListRef) deviceListRef.off();
+  if (adminMsgRef) adminMsgRef.off();
+  if (busListRef) busListRef.off();
+  if (passengerMsgRef) passengerMsgRef.off();
+  if (driverMsgRef) driverMsgRef.off();
+  if (walkieRef) walkieRef.off();
+  if (adminWalkieRef) adminWalkieRef.off();
+}
+
+// ===== 公告按鈕事件綁定 =====
 document.addEventListener('DOMContentLoaded', function() {
-  // 右下角公告按鈕
   document.getElementById('floating-announce-btn').addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -1837,14 +1915,12 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAnnounceList();
   });
 
-  // 右上角鈴鐺
   document.getElementById('announce-bell').addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
     document.getElementById('announce-modal').classList.add('active');
   });
 
-  // 關閉按鈕
   document.getElementById('announce-modal-close').addEventListener('click', function() {
     document.getElementById('announce-modal').classList.remove('active');
   });
@@ -1863,7 +1939,7 @@ checkAnnounce();
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 終極穩定版已啟動');
+console.log('西鐵小巴 v9.0 終極穩定版已修復');
 </script>
 </body>
 </html>
