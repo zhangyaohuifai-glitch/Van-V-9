@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>西鐵小巴 v9.1 · 穩定修復版</title>
+<title>西鐵小巴 v9.2 · 最終穩定版</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -107,12 +107,12 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 <body>
 
 <div class="header">
-  <div class="title">西鐵小巴 v9.1</div>
-  <div class="dev-tag" id="dev-tag">🔧 穩定修復版</div>
+  <div class="title">西鐵小巴 v9.2</div>
+  <div class="dev-tag" id="dev-tag">✅ 最終穩定版</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
 
-<!-- 公告元件（同原本） -->
+<!-- 公告元件 -->
 <button class="floating-announce" id="floating-announce-btn">📢</button>
 <button class="announce-bell" id="announce-bell">🔔<span class="dot-badge"></span></button>
 <div class="announce-overlay" id="announce-overlay">
@@ -126,7 +126,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
   <div class="modal-card"><div class="modal-text" id="announce-modal-text"></div><button class="close-btn" id="announce-modal-close">關閉</button></div>
 </div>
 
-<!-- 登入彈窗（同原本） -->
+<!-- 登入彈窗 -->
 <div class="login-modal" id="login-modal">
   <div class="login-card">
     <h2 style="color:var(--gold);margin-bottom:16px;font-size:28px;">🔐 登入</h2>
@@ -358,7 +358,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 
 <script>
 // ============================================================
-//  FIREBASE 初始化（不變）
+//  FIREBASE 初始化
 // ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCnToMYsM7pIGeGHLt5xFbQfT5RAIWzTQA",
@@ -390,20 +390,11 @@ let lastReportedIndex = -1;
 
 // ---------- 監聽器管理 ----------
 const activeListeners = {
-  busList: null,          // 乘客列表
-  passengerBus: null,     // 追蹤車輛
-  passengerMsg: null,
-  driverBus: null,
-  driverMsg: null,
-  walkie: null,
-  adminBus: null,
-  adminMsg: null,
-  adminDevice: null,
-  adminBans: null,
-  adminAnnounce: null,
-  adminWalkie: null,
-  announceBell: null,
-  adminActiveBus: null
+  busList: null, passengerBus: null, passengerMsg: null,
+  driverBus: null, driverMsg: null, walkie: null,
+  adminActiveBus: null, adminMsg: null, adminDevice: null,
+  adminBans: null, adminBans2: null, adminAnnounce: null,
+  adminWalkie: null, announceBell: null
 };
 
 function detach(ref) {
@@ -412,26 +403,17 @@ function detach(ref) {
 }
 
 function detachAllListeners() {
-  activeListeners.busList = detach(activeListeners.busList);
-  activeListeners.passengerBus = detach(activeListeners.passengerBus);
-  activeListeners.passengerMsg = detach(activeListeners.passengerMsg);
-  activeListeners.driverBus = detach(activeListeners.driverBus);
-  activeListeners.driverMsg = detach(activeListeners.driverMsg);
-  activeListeners.walkie = detach(activeListeners.walkie);
-  activeListeners.adminBus = detach(activeListeners.adminBus);
-  activeListeners.adminMsg = detach(activeListeners.adminMsg);
-  activeListeners.adminDevice = detach(activeListeners.adminDevice);
-  activeListeners.adminBans = detach(activeListeners.adminBans);
-  activeListeners.adminAnnounce = detach(activeListeners.adminAnnounce);
-  activeListeners.adminWalkie = detach(activeListeners.adminWalkie);
-  activeListeners.announceBell = detach(activeListeners.announceBell);
-  activeListeners.adminActiveBus = detach(activeListeners.adminActiveBus);
-  // 停止 GPS
-  if (gpsWatchId) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+  for (let key in activeListeners) {
+    activeListeners[key] = detach(activeListeners[key]);
+  }
+  if (gpsWatchId) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+  }
 }
 
 // ============================================================
-//  工具函數（不變）
+//  工具函數
 // ============================================================
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -440,15 +422,17 @@ function showToast(msg) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), 3000);
 }
+
 function showView(id) {
-  // 離開任何 view 時卸載監聽器（但保留必要的，例如大堂無需監聽）
-  // 我們會在每個 view 的進入函數中重新綁定，所以離開時全部卸載是安全的
   detachAllListeners();
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
 }
+
 function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function decodeBase64(str) { try { return atob(str); } catch(e) { return ''; } }
+
 function calcDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -461,7 +445,7 @@ function calcDistance(lat1, lon1, lat2, lon2) {
 }
 
 // ============================================================
-//  設備指紋（不變）
+//  設備指紋
 // ============================================================
 function collectDeviceInfo() {
   try {
@@ -500,16 +484,24 @@ async function saveDeviceInfo(uid, phone, role) {
 }
 
 // ============================================================
-//  廣東話語音（不變）
+//  廣東話語音（含即時靜音）
 // ============================================================
 let preferredVoice = null;
 let voiceEnabled = true;
+
 document.getElementById('global-voice-btn').addEventListener('click', function() {
   voiceEnabled = !voiceEnabled;
   this.textContent = voiceEnabled ? '🔊' : '🔇';
   this.classList.toggle('muted');
-  showToast(voiceEnabled ? '語音已開啟' : '語音已關閉');
-  // 如果乘客報站已開啟，但語音總開關被關閉，提示使用者
+  // ★ 關鍵修復：撳靜音即時停止所有正在播放嘅語音
+  if (!voiceEnabled) {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    showToast('🔇 語音已關閉，即時停止');
+  } else {
+    showToast('🔊 語音已開啟');
+  }
   if (!voiceEnabled && passengerVoiceEnabled) {
     showToast('⚠️ 自動報站已暫停 (語音總開關已關閉)');
   }
@@ -562,7 +554,7 @@ async function playWelcomeVoice() {
 }
 
 // ============================================================
-//  轉數快複製（不變）
+//  轉數快複製
 // ============================================================
 document.getElementById('fps-code').addEventListener('click', function() {
   const text = '122891914';
@@ -593,7 +585,7 @@ document.getElementById('fps-code').addEventListener('click', function() {
 });
 
 // ============================================================
-//  7日自動清除（不變）
+//  7日自動清除
 // ============================================================
 function cleanupOldMessages() {
   const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
@@ -614,7 +606,7 @@ setInterval(cleanupOldMessages, 3600000);
 setTimeout(cleanupOldMessages, 5000);
 
 // ============================================================
-//  登入系統（不變，只加 admin 登入後載入後台時清理舊監聽）
+//  登入系統
 // ============================================================
 function openLoginModal() {
   document.getElementById('login-modal').classList.add('active');
@@ -662,7 +654,6 @@ document.getElementById('admin-login-btn').addEventListener('click', async () =>
       showToast('✅ 管理員登入成功');
       if (currentUser.uid) await saveDeviceInfo(currentUser.uid, username, 'admin');
       playWelcomeVoice();
-      // 不自動載入後台，讓使用者手動點擊
       localStorage.setItem('savedAdmin', username);
     } else {
       errEl.textContent = '密碼錯誤';
@@ -707,7 +698,7 @@ auth.onAuthStateChanged(async (user) => {
 });
 
 // ============================================================
-//  大堂功能（修改：按鈕進入 view 時清理監聽）
+//  大堂功能
 // ============================================================
 document.getElementById('btn-passenger').addEventListener('click', () => {
   if (!currentUser.uid) { openLoginModal(); return; }
@@ -726,7 +717,6 @@ document.getElementById('btn-admin-panel').addEventListener('click', () => {
   loadAdminPanel();
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
-  // 停止所有監聽和 GPS
   detachAllListeners();
   if (gpsWatchId) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
   auth.signOut();
@@ -748,12 +738,11 @@ document.getElementById('btn-guide-voice').addEventListener('click', () => {
 });
 
 // ============================================================
-//  乘客功能（修正監聽器管理）
+//  乘客功能（包含返回按鈕加固）
 // ============================================================
 function loadBusList() {
   const container = document.getElementById('bus-list-container');
   container.innerHTML = '載入中…';
-  // 卸載舊監聽
   activeListeners.busList = detach(activeListeners.busList);
   activeListeners.busList = db.ref('van/active_buses');
   activeListeners.busList.on('value', snap => {
@@ -782,7 +771,6 @@ function trackBus(plate) {
   const card = document.getElementById('pass-data-card');
   card.innerHTML = '讀取中…';
   passengerLastStationIndex = -1;
-  // 卸載舊監聽
   activeListeners.passengerBus = detach(activeListeners.passengerBus);
   activeListeners.passengerMsg = detach(activeListeners.passengerMsg);
   
@@ -856,7 +844,7 @@ function renderPassRouteStrip(bus) {
   });
 }
 
-// ===== 乘客語音開關（修正：與全域語音聯動） =====
+// 乘客語音開關
 document.getElementById('voice-toggle').addEventListener('click', function() {
   passengerVoiceEnabled = !passengerVoiceEnabled;
   if (passengerVoiceEnabled) {
@@ -901,7 +889,7 @@ document.getElementById('voice-toggle').addEventListener('click', function() {
   }
 });
 
-// ===== 乘客訊息（不變） =====
+// ★ 乘客訊息發送
 document.getElementById('btn-pass-send').addEventListener('click', () => {
   const input = document.getElementById('pass-msg-input');
   const text = input.value.trim();
@@ -916,7 +904,11 @@ document.getElementById('btn-pass-clear').addEventListener('click', () => {
     showToast('已清除');
   });
 });
-document.getElementById('btn-back-list').addEventListener('click', () => {
+
+// ★★★ 修復返回按鈕（加固事件，確保一定生效）★★★
+document.getElementById('btn-back-list').addEventListener('click', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
   passengerVoiceEnabled = false;
   const btn = document.getElementById('voice-toggle');
   btn.style.background = '#ff9f0a';
@@ -926,7 +918,10 @@ document.getElementById('btn-back-list').addEventListener('click', () => {
   showView('view-passenger-list');
   loadBusList();
 });
-document.getElementById('btn-back-track').addEventListener('click', () => {
+
+document.getElementById('btn-back-track').addEventListener('click', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
   passengerVoiceEnabled = false;
   const btn = document.getElementById('voice-toggle');
   btn.style.background = '#ff9f0a';
@@ -938,7 +933,7 @@ document.getElementById('btn-back-track').addEventListener('click', () => {
 });
 
 // ============================================================
-//  錄音功能（修正：錯誤時復原 UI）
+//  錄音功能（錯誤復原）
 // ============================================================
 let mediaRecorder = null, audioChunks = [], recordingTimer = null, recSeconds = 0;
 function startRecording(btn, timerEl, callback) {
@@ -973,7 +968,7 @@ function startRecording(btn, timerEl, callback) {
     }, 1000);
   }).catch(err => {
     showToast('無法開啟咪高峰');
-    btn.classList.remove('recording');   // 復原 UI
+    btn.classList.remove('recording');
     if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
   });
 }
@@ -985,7 +980,7 @@ function stopRecording(btn, timerEl) {
 }
 function bindRecordBtn(btnId, timerId, callback) {
   const btn = document.getElementById(btnId);
-  if (!btn) { console.warn('按鈕不存在:', btnId); return; }
+  if (!btn) return;
   const timer = document.getElementById(timerId);
   let longPress = null;
   btn.addEventListener('pointerdown', (e) => {
@@ -1008,7 +1003,7 @@ bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
 });
 
 // ============================================================
-//  司機功能（修正：手動按鈕檢查 isActive，調頭重置 lastReportedIndex）
+//  司機功能
 // ============================================================
 const BUSY = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","合益路","鳳翔路","元朗站H出口（朗明街）"];
 const NORMAL = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","教育路麥當勞","鄉議局中學","大球場","元朗廣場","余仁生（大馬路）","家居站","元朗站H出口（朗明街）","鳳翔路","合益路","富達廣場(回程)","蝶翠峰(回程)","禮修村公廁(回程)","深涌村(回程)","崇正公立學校(回程)","紅棗田(回程)","南坑村(回程)","南坑排(回程)","曉門(回程)","水蕉新村(回程)","大棠村迴旋處(回程)","大棠山路(回程)","大棠黃泥墩(終點站)"];
@@ -1043,7 +1038,6 @@ function initDriverPanel() {
     if (plate) driverData.plate = plate.toUpperCase();
     else { showToast('必須輸入車牌'); showView('view-lobby'); return; }
   }
-  // 卸載舊監聽
   activeListeners.driverBus = detach(activeListeners.driverBus);
   activeListeners.driverMsg = detach(activeListeners.driverMsg);
   
@@ -1150,13 +1144,11 @@ function updateDriverDB() {
   if (driverData.plate) {
     db.ref('van/active_buses/'+driverData.plate).update(data).catch(err => {
       console.warn('更新失敗，將重試:', err);
-      // 可選：顯示錯誤，但我們不阻礙 UI
     });
   }
   updateDriverUI();
 }
 
-// ===== 手動下一站/上一站 加入 isActive 檢查 =====
 async function goToNextStation() {
   if (!driverData.isActive) { showToast('請先開始當值'); return; }
   const route = getRoute();
@@ -1173,7 +1165,7 @@ async function goToNextStation() {
     showToast('已到總站，自動調頭');
     driverData.direction = driverData.direction === 0 ? 1 : 0;
     driverData.stationIndex = 0;
-    lastReportedIndex = -1;  // 重置 GPS 記憶
+    lastReportedIndex = -1;
     updateDriverDB();
     speakCantonese('已調頭，返回起點');
   }
@@ -1221,7 +1213,7 @@ document.getElementById('btn-switch-dir').addEventListener('click', () => {
   driverData.direction = driverData.direction===0 ? 1 : 0;
   const route = getRoute();
   driverData.stationIndex = route.length - 1 - driverData.stationIndex;
-  lastReportedIndex = -1;  // 重置 GPS 記憶
+  lastReportedIndex = -1;
   updateDriverDB();
   speakCantonese('已調頭');
 });
@@ -1233,7 +1225,7 @@ document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   showToast('已切換路線');
 });
 
-// ===== 真實 GPS =====
+// GPS
 document.getElementById('start-gps').addEventListener('click', () => {
   if (!driverData.plate) { showToast('請先設定車牌'); return; }
   if (!navigator.geolocation) { showToast('瀏覽器不支援 GPS'); return; }
@@ -1299,7 +1291,7 @@ document.getElementById('stop-gps').addEventListener('click', () => {
 });
 
 // ============================================================
-//  司機訊息（不變）
+//  司機訊息
 // ============================================================
 document.getElementById('btn-driver-send').addEventListener('click', () => {
   const input = document.getElementById('driver-msg-input');
@@ -1330,7 +1322,6 @@ document.getElementById('btn-driver-clear-overlay').addEventListener('click', ()
   });
 });
 document.getElementById('btn-driver-back').addEventListener('click', () => {
-  // 卸載所有司機監聽
   activeListeners.driverBus = detach(activeListeners.driverBus);
   activeListeners.driverMsg = detach(activeListeners.driverMsg);
   activeListeners.walkie = detach(activeListeners.walkie);
@@ -1353,7 +1344,7 @@ bindRecordBtn('btn-driver-record-overlay', 'driver-timer-overlay', (base64) => {
 });
 
 // ============================================================
-//  對講機（修正監聽器管理）
+//  對講機
 // ============================================================
 function initWalkieTalkie() {
   if (!driverData.plate) return;
@@ -1412,18 +1403,19 @@ bindRecordBtn('btn-walkie-record', 'walkie-timer', (base64) => {
 });
 
 // ============================================================
-//  管理後台（重構監聽器管理，避免疊加）
+//  管理後台（精簡版，已修復監聽器重複綁定）
 // ============================================================
 function loadAdminPanel() {
-  // 先卸載所有 admin 相關監聽（避免重複）
+  // 卸載所有 admin 監聽
   activeListeners.adminActiveBus = detach(activeListeners.adminActiveBus);
   activeListeners.adminMsg = detach(activeListeners.adminMsg);
   activeListeners.adminDevice = detach(activeListeners.adminDevice);
   activeListeners.adminBans = detach(activeListeners.adminBans);
+  activeListeners.adminBans2 = detach(activeListeners.adminBans2);
   activeListeners.adminAnnounce = detach(activeListeners.adminAnnounce);
   activeListeners.adminWalkie = detach(activeListeners.adminWalkie);
   
-  // --- 在線車輛監控 ---
+  // 監控車輛
   activeListeners.adminActiveBus = db.ref('van/active_buses');
   activeListeners.adminActiveBus.on('value', snap => {
     const data = snap.val() || {};
@@ -1437,8 +1429,7 @@ function loadAdminPanel() {
     document.getElementById('admin-active-count').textContent = count;
     document.getElementById('admin-passenger-count').textContent = totalPass;
   });
-
-  // --- 訊息監控 ---
+  // 訊息
   activeListeners.adminMsg = db.ref('van/messages').orderByChild('timestamp').limitToLast(100);
   activeListeners.adminMsg.on('value', snap => {
     const container = document.getElementById('admin-msg-list');
@@ -1461,50 +1452,10 @@ function loadAdminPanel() {
     document.getElementById('admin-msg-count').textContent = msgCount;
   });
 
-  // --- 設備列表（只在 devices tab 加載，此處先不監聽，由 tab 切換觸發）---
-  // 為了避免一開始就載入，我們在 tab 切換時才加載 devices
-  // 但我們先存一個變數，不立即監聽
-  // 同樣 bans, announce 也由 tab 切換觸發，或全域監聽（但我們選擇在 tab 切換時加載）
-
-  // 預設顯示 monitor，其他 tab 的監聽由 tab 切換時觸發
-  // 但我們可以預先載入 bans 和 announce（因為它們可能在後台常駐，但我們只在切換時加載）
-  // 為簡化，我們將在 tab 點擊事件中動態加載並卸載
-  // 但為了不遺漏，我們在 loadAdminPanel 中只綁定 monitor 和 統計，其他由 tab 按鈕觸發
-
-  // 清除舊的 tab 事件，避免重複綁定
-  // 因為 loadAdminPanel 可能被多次調用，我們先移除所有舊的 tab 監聽，再重新添加
-  // 但由於我們使用匿名函數，無法直接移除，所以我們在每次 load 時先卸載所有 admin 監聽，然後重新綁定
-  // 但 tab 點擊事件我們用一個獨立的函數來管理
-
-  // 我們使用一個 flag 防止重複綁定 tab 事件
-  if (!window._adminTabsBound) {
-    window._adminTabsBound = true;
-    document.querySelectorAll('.admin-tab').forEach(tab => {
-      tab.addEventListener('click', function() {
-        // 切換 active class
-        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
-        this.classList.add('active');
-        const tabName = this.dataset.tab;
-        document.getElementById('admin-section-' + tabName).classList.add('active');
-        // 根據 tab 加載相應監聽
-        if (tabName === 'devices') loadDeviceList();
-        else if (tabName === 'walkie') { initAdminWalkie(); updateAdminWalkieTargets(); }
-        else if (tabName === 'bans') loadBans();
-        else if (tabName === 'announce') loadAdminAnnounce();
-        // 其他 tab 不需要額外加載（monitor 已常駐，kick/broadcast 為操作型）
-      });
-    });
-  }
-
-  // 載入 bans 和 announce（因為它們在 tab 切換時才加載，但為了初次顯示，我們預載 bans 和 announce ？）
-  // 但為了讓用戶切換到對應 tab 才載入，我們在 tab click 中處理
-  // 現在先確保 monitor 是 active
-  // 另外，bans 的按鈕事件需要綁定，但因為 loadAdminPanel 可能多次調用，需要防止重複綁定
-  // 我們使用一次性綁定
+  // 按鈕事件一次性綁定（防止重複）
   if (!window._adminActionsBound) {
     window._adminActionsBound = true;
-    // 封鎖按鈕
+    // 所有操作按鈕...
     document.getElementById('btn-ban-phone').addEventListener('click', function() {
       const phone = document.getElementById('admin-ban-phone').value.trim();
       if (!phone) { showToast('請輸入電話號碼'); return; }
@@ -1519,7 +1470,6 @@ function loadAdminPanel() {
       document.getElementById('admin-ban-pass').value = '';
       showToast('已封鎖乘客 ' + name);
     });
-    // 踢出車輛
     document.getElementById('btn-kick-vehicle').addEventListener('click', function() {
       const id = document.getElementById('admin-kick-vehicle').value.trim();
       if (!id) { showToast('請輸入車牌或電話'); return; }
@@ -1560,7 +1510,6 @@ function loadAdminPanel() {
       });
       document.getElementById('admin-kick-passenger').value = '';
     });
-    // 發佈公告
     document.getElementById('btn-publish-announce').addEventListener('click', function() {
       const text = document.getElementById('admin-announce-text').value.trim();
       if (!text) { showToast('請輸入公告內容'); return; }
@@ -1579,7 +1528,6 @@ function loadAdminPanel() {
       db.ref('van/announcements').remove();
       showToast('已清除公告');
     });
-    // 廣播
     document.getElementById('btn-admin-broadcast-send').addEventListener('click', function() {
       const input = document.getElementById('admin-broadcast-input');
       const text = input.value.trim();
@@ -1627,7 +1575,7 @@ function loadAdminPanel() {
         showToast('✅ 已清除所有對講機訊息');
       });
     });
-    // 錄音按鈕綁定（admin walkie, announce, broadcast）
+    // 錄音綁定
     bindRecordBtn('btn-admin-walkie-record', 'admin-walkie-timer', (base64) => {
       const target = document.getElementById('admin-walkie-target')?.value || 'all';
       if (!currentUser.isAdmin) { showToast('權限不足'); return; }
@@ -1680,9 +1628,26 @@ function loadAdminPanel() {
       }
     });
   }
+
+  // Tab 切換（只綁一次）
+  if (!window._adminTabsBound) {
+    window._adminTabsBound = true;
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+        this.classList.add('active');
+        const tabName = this.dataset.tab;
+        document.getElementById('admin-section-' + tabName).classList.add('active');
+        if (tabName === 'devices') loadDeviceList();
+        else if (tabName === 'walkie') { initAdminWalkie(); updateAdminWalkieTargets(); }
+        else if (tabName === 'bans') loadBans();
+        else if (tabName === 'announce') loadAdminAnnounce();
+      });
+    });
+  }
 }
 
-// 設備列表（只在切換到 devices tab 時加載，並卸載舊監聽）
 function loadDeviceList() {
   const container = document.getElementById('admin-device-list');
   activeListeners.adminDevice = detach(activeListeners.adminDevice);
@@ -1779,9 +1744,7 @@ function loadAdminAnnounce() {
   });
 }
 
-// ============================================================
-//  管理員對講機（修正監聽器）
-// ============================================================
+// 管理員對講機
 function initAdminWalkie() {
   if (!currentUser.isAdmin) return;
   updateAdminWalkieTargets();
@@ -1822,7 +1785,7 @@ function updateAdminWalkieTargets() {
 document.getElementById('admin-walkie-refresh').addEventListener('click', updateAdminWalkieTargets);
 
 // ============================================================
-//  返回大堂（卸載所有）
+//  返回後台
 // ============================================================
 document.getElementById('btn-back-admin').addEventListener('click', () => {
   detachAllListeners();
@@ -1830,10 +1793,10 @@ document.getElementById('btn-back-admin').addEventListener('click', () => {
 });
 
 // ============================================================
-//  公告系統（不變）
+//  公告系統
 // ============================================================
 function checkAnnounce() {
-  if (activeListeners.announceBell) activeListeners.announceBell.off();
+  activeListeners.announceBell = detach(activeListeners.announceBell);
   activeListeners.announceBell = db.ref('van/announcements').limitToLast(1);
   activeListeners.announceBell.on('value', snap => {
     if (snap.val()) {
@@ -1882,7 +1845,7 @@ document.getElementById('close-announce-overlay').addEventListener('click', func
 checkAnnounce();
 
 // ============================================================
-//  閒置 15 秒返回（修正：只在司機頁面有效，且與監聽器卸載配合）
+//  閒置 15 秒返回
 // ============================================================
 let idleTimer = null;
 let isIdleTimerRunning = false;
@@ -1928,7 +1891,7 @@ document.addEventListener('mousemove', resetIdleTimer);
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.1 穩定修復版已啟動');
+console.log('西鐵小巴 v9.2 最終穩定版已啟動');
 </script>
 </body>
 </html>
