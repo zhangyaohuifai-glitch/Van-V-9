@@ -18,9 +18,8 @@
 * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
 body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
 .header { padding:10px; text-align:center; border-bottom:1px solid #333; flex-shrink:0; position:relative; }
-.title { font-size:26px; font-weight:800; color:var(--gold); }
-.title small { font-size:16px; color:#aaa; font-weight:400; }
-.dev-tag { font-size:14px; color:#aaa; cursor:pointer; }
+.title { font-size:32px; font-weight:800; color:var(--gold); }
+.dev-tag { font-size:16px; color:#aaa; cursor:pointer; }
 .global-voice-toggle { position:absolute; top:8px; right:10px; width:52px; height:52px; border-radius:50%; background:var(--green); border:none; color:#fff; font-size:26px; cursor:pointer; }
 .global-voice-toggle.muted { background:var(--red); }
 .view { display:none; flex:1; overflow-y:auto; padding:12px; flex-direction:column; }
@@ -84,7 +83,6 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 .admin-item .info { font-size:15px; color:#ccc; margin-top:2px; }
 .admin-input { flex:1; padding:14px; border-radius:10px; border:none; font-size:18px; background:#2c2c2e; color:#fff; min-width:60px; }
 
-/* ===== 公告按鈕 ===== */
 .floating-announce {
   position:fixed; bottom:80px; right:16px; width:60px; height:60px; border-radius:50%;
   background:var(--green); border:none; color:#fff; font-size:28px; cursor:pointer;
@@ -155,8 +153,6 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
   background:#000; padding:12px; border-radius:12px; display:inline-block;
   font-size:20px; color:var(--gold); cursor:pointer;
 }
-
-/* ===== 乘客報站按鈕放大 ===== */
 #voice-toggle {
   font-size:28px !important;
   padding:20px !important;
@@ -167,7 +163,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 <body>
 
 <div class="header">
-  <div class="title">西鐵小巴 <small>開發者-大輝</small></div>
+  <div class="title">西鐵小巴 v9.0</div>
   <div class="dev-tag" id="dev-tag">📢 終極穩定版</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
@@ -456,10 +452,6 @@ let walkieRef = null, adminWalkieRef = null;
 let passengerVoiceEnabled = false;
 let passengerLastStationIndex = -1;
 
-// 管理 listener
-let announceListenerRef = null;
-let deviceListRef = null;
-
 // ===== 站點及經緯度 =====
 const BUSY = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","合益路","鳳翔路","元朗站H出口（朗明街）"];
 const NORMAL = ["大棠黃泥墩","大棠山路","大棠村迴旋處","水蕉新村","曉門","南坑排","南坑村","紅棗田","崇正公立學校","深涌村","禮修村公廁","蝶翠峰","富達廣場","教育路麥當勞","鄉議局中學","大球場","元朗廣場","余仁生（大馬路）","家居站","元朗站H出口（朗明街）","鳳翔路","合益路","富達廣場(回程)","蝶翠峰(回程)","禮修村公廁(回程)","深涌村(回程)","崇正公立學校(回程)","紅棗田(回程)","南坑村(回程)","南坑排(回程)","曉門(回程)","水蕉新村(回程)","大棠村迴旋處(回程)","大棠山路(回程)","大棠黃泥墩(終點站)"];
@@ -491,21 +483,6 @@ function getCoords() { return driverData.mode === 'busy' ? COORDS_BUSY : COORDS_
 // ============================================================
 //  工具函數
 // ============================================================
-function encodeBase64(str) {
-  try {
-    return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
-  } catch (e) {
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-}
-function decodeBase64(str) {
-  try {
-    return new TextDecoder().decode(Uint8Array.from(atob(str), c => c.charCodeAt(0)));
-  } catch (e) {
-    return decodeURIComponent(escape(atob(str)));
-  }
-}
-
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -516,8 +493,9 @@ function showToast(msg) {
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  resetIdleTimer();
 }
+function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function decodeBase64(str) { try { return atob(str); } catch(e) { return ''; } }
 function calcDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -569,7 +547,7 @@ async function saveDeviceInfo(uid, phone, role) {
 }
 
 // ============================================================
-//  廣東話語音系統
+//  廣東話自然語音系統
 // ============================================================
 let preferredVoice = null;
 let voiceEnabled = true;
@@ -583,7 +561,9 @@ document.getElementById('global-voice-btn').addEventListener('click', function()
 function getCantoneseVoice() {
   if (preferredVoice) {
     const allVoices = window.speechSynthesis.getVoices();
-    if (allVoices.some(v => v.voiceURI === preferredVoice.voiceURI)) return preferredVoice;
+    if (allVoices.some(v => v.voiceURI === preferredVoice.voiceURI)) {
+      return preferredVoice;
+    }
     preferredVoice = null;
   }
   if (!window.speechSynthesis) return null;
@@ -600,7 +580,10 @@ function getCantoneseVoice() {
   
   for (const condition of priorityOrder) {
     const found = voices.find(condition);
-    if (found) { preferredVoice = found; return found; }
+    if (found) {
+      preferredVoice = found;
+      return found;
+    }
   }
   return null;
 }
@@ -616,8 +599,14 @@ function speakCantonese(text) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-HK';
     const voice = getCantoneseVoice();
-    if (voice) { utter.voice = voice; utter.rate = 0.9; utter.pitch = 1.0; }
-    else { utter.rate = 0.9; utter.pitch = 1.0; }
+    if (voice) {
+      utter.voice = voice;
+      utter.rate = 0.9;
+      utter.pitch = 1.0;
+    } else {
+      utter.rate = 0.9;
+      utter.pitch = 1.0;
+    }
     utter.onend = () => resolve();
     utter.onerror = () => resolve();
     window.speechSynthesis.speak(utter);
@@ -639,16 +628,22 @@ document.getElementById('fps-code').addEventListener('click', function() {
       showToast('✅ 已複製轉數快號碼：' + text);
       speakCantonese('多謝支持');
     }).catch(() => {
-      const input = document.createElement('input'); input.value = text;
-      document.body.appendChild(input); input.select();
-      document.execCommand('copy'); document.body.removeChild(input);
+      const input = document.createElement('input');
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
       showToast('✅ 已複製轉數快號碼：' + text);
       speakCantonese('多謝支持');
     });
   } else {
-    const input = document.createElement('input'); input.value = text;
-    document.body.appendChild(input); input.select();
-    document.execCommand('copy'); document.body.removeChild(input);
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
     showToast('✅ 已複製轉數快號碼：' + text);
     speakCantonese('多謝支持');
   }
@@ -657,22 +652,27 @@ document.getElementById('fps-code').addEventListener('click', function() {
 // ============================================================
 //  7日自動清除過期訊息
 // ============================================================
-let cleanupInterval = null;
-function startCleanup() {
-  if (cleanupInterval) clearInterval(cleanupInterval);
-  cleanupInterval = setInterval(cleanupOldMessages, 3600000);
-  cleanupOldMessages();
-}
 function cleanupOldMessages() {
   const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
   db.ref('van/messages').once('value', snap => {
-    snap.forEach(child => { if (child.val().timestamp < cutoff) child.ref.remove(); });
+    snap.forEach(child => {
+      const msg = child.val();
+      if (msg.timestamp && msg.timestamp < cutoff) {
+        child.ref.remove();
+      }
+    });
   });
   db.ref('van/walkie_talkie').once('value', snap => {
-    snap.forEach(child => { if (child.val().timestamp < cutoff) child.ref.remove(); });
+    snap.forEach(child => {
+      const msg = child.val();
+      if (msg.timestamp && msg.timestamp < cutoff) {
+        child.ref.remove();
+      }
+    });
   });
 }
-startCleanup();
+setInterval(cleanupOldMessages, 3600000);
+setTimeout(cleanupOldMessages, 5000);
 
 // ============================================================
 //  登入系統
@@ -683,7 +683,9 @@ function openLoginModal() {
   document.getElementById('admin-login-form').style.display = 'none';
   document.getElementById('user-login-form').style.display = 'none';
   const savedPhone = localStorage.getItem('savedPhone');
-  if (savedPhone) document.getElementById('user-phone').value = savedPhone;
+  if (savedPhone) {
+    document.getElementById('user-phone').value = savedPhone;
+  }
 }
 document.getElementById('login-cancel').addEventListener('click', () => {
   document.getElementById('login-modal').classList.remove('active');
@@ -726,7 +728,9 @@ document.getElementById('admin-login-btn').addEventListener('click', async () =>
       loadAdminPanel();
       initAdminWalkie();
       localStorage.setItem('savedAdmin', username);
-    } else { errEl.textContent = '密碼錯誤'; }
+    } else {
+      errEl.textContent = '密碼錯誤';
+    }
   } catch (e) { errEl.textContent = '錯誤：' + e.message; }
 });
 
@@ -795,7 +799,6 @@ document.getElementById('btn-logout').addEventListener('click', () => {
   document.getElementById('btn-admin-panel').style.display = 'none';
   showToast('已登出');
   showView('view-lobby');
-  cleanupAllListeners();
 });
 document.getElementById('btn-generate-qr').addEventListener('click', () => {
   const box = document.getElementById('qr-box');
@@ -810,7 +813,7 @@ document.getElementById('btn-guide-voice').addEventListener('click', () => {
 });
 
 // ============================================================
-//  乘客功能
+//  乘客功能（含自動同步語音報站）
 // ============================================================
 function loadBusList() {
   const container = document.getElementById('bus-list-container');
@@ -885,7 +888,8 @@ function trackBus(plate) {
       div.className = 'msg-row';
       if (msg.audio) {
         const btn = document.createElement('button');
-        btn.className = 'play-audio'; btn.textContent = '▶ 語音';
+        btn.className = 'play-audio';
+        btn.textContent = '▶ 語音';
         btn.addEventListener('click', () => new Audio('data:audio/webm;base64,'+msg.audio).play());
         div.appendChild(btn);
         div.appendChild(document.createTextNode(msg.senderPhone||''));
@@ -913,6 +917,7 @@ function renderPassRouteStrip(bus) {
   });
 }
 
+// ===== 乘客語音開關 =====
 document.getElementById('voice-toggle').addEventListener('click', function() {
   passengerVoiceEnabled = !passengerVoiceEnabled;
   if (passengerVoiceEnabled) {
@@ -949,6 +954,7 @@ document.getElementById('voice-toggle').addEventListener('click', function() {
   }
 });
 
+// ===== 乘客訊息 =====
 document.getElementById('btn-pass-send').addEventListener('click', () => {
   const input = document.getElementById('pass-msg-input');
   const text = input.value.trim();
@@ -963,99 +969,88 @@ document.getElementById('btn-pass-clear').addEventListener('click', () => {
     showToast('已清除');
   });
 });
-
-// 修正按钮返回逻辑
 document.getElementById('btn-back-list').addEventListener('click', () => {
   if (busListRef) busListRef.off();
   passengerVoiceEnabled = false;
   const btn = document.getElementById('voice-toggle');
-  if (btn) { btn.style.background = '#ff9f0a'; btn.style.color = '#000'; btn.textContent = '🔊 開啟廣東話自動報站'; }
+  btn.style.background = '#ff9f0a';
+  btn.style.color = '#000';
+  btn.textContent = '🔊 開啟廣東話自動報站';
   passengerLastStationIndex = -1;
-  showView('view-lobby');
+  showView('view-passenger-list'); loadBusList();
 });
-
 document.getElementById('btn-back-track').addEventListener('click', () => {
   if (passengerMsgRef) passengerMsgRef.off();
   passengerVoiceEnabled = false;
   const btn = document.getElementById('voice-toggle');
-  if (btn) { btn.style.background = '#ff9f0a'; btn.style.color = '#000'; btn.textContent = '🔊 開啟廣東話自動報站'; }
+  btn.style.background = '#ff9f0a';
+  btn.style.color = '#000';
+  btn.textContent = '🔊 開啟廣東話自動報站';
   passengerLastStationIndex = -1;
-  showView('view-passenger-list');
-  loadBusList();
+  showView('view-passenger-list'); loadBusList();
 });
 
 // ============================================================
-//  錄音功能（每個按鈕獨立 recorder）
+//  錄音功能
 // ============================================================
-function createRecorder() {
-  let mediaRecorder = null, audioChunks = [], stream = null, timer = null;
-
-  return {
-    start(btn, timerEl, callback) {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showToast('不支援錄音'); return;
-      }
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-        stream = s;
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(audioChunks, { type: 'audio/webm' });
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = reader.result.split(',')[1];
-            if (callback) callback(base64);
-            showToast('錄音完成');
-          };
-          reader.readAsDataURL(blob);
-          btn.classList.remove('recording');
-          if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
-          clearInterval(timer);
-          stream.getTracks().forEach(t => t.stop());
-        };
-        mediaRecorder.start();
-        btn.classList.add('recording');
-        let sec = 0;
-        if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
-        timer = setInterval(() => {
-          sec++;
-          if (timerEl) timerEl.textContent = sec + 's';
-        }, 1000);
-      }).catch(err => showToast('無法開啟咪高峰'));
-    },
-    stop(btn) {
-      if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-      if (timer) { clearInterval(timer); timer = null; }
+let mediaRecorder = null, audioChunks = [], recordingTimer = null, recSeconds = 0;
+function startRecording(btn, timerEl, callback) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('不支援錄音'); return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        if (callback) callback(base64);
+        showToast('錄音完成');
+      };
+      reader.readAsDataURL(blob);
       btn.classList.remove('recording');
-    }
-  };
+      if (timerEl) { timerEl.style.display = 'none'; timerEl.textContent = '0s'; }
+      clearInterval(recordingTimer);
+      recordingTimer = null;
+    };
+    mediaRecorder.start();
+    btn.classList.add('recording');
+    recSeconds = 0;
+    if (timerEl) { timerEl.style.display = 'block'; timerEl.textContent = '0s'; }
+    recordingTimer = setInterval(() => {
+      recSeconds++;
+      if (timerEl) timerEl.textContent = recSeconds + 's';
+    }, 1000);
+  }).catch(err => showToast('無法開啟咪高峰'));
 }
-
+function stopRecording(btn, timerEl) {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+}
 function bindRecordBtn(btnId, timerId, callback) {
-  const recorder = createRecorder();
   const btn = document.getElementById(btnId);
+  if (!btn) { console.warn('按鈕不存在:', btnId); return; }
   const timer = document.getElementById(timerId);
   let longPress = null;
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    longPress = setTimeout(() => recorder.start(btn, timer, callback), 500);
+    longPress = setTimeout(() => startRecording(btn, timer, callback), 500);
   });
   btn.addEventListener('pointerup', (e) => {
     e.preventDefault();
     clearTimeout(longPress);
-    recorder.stop(btn);
+    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
   });
   btn.addEventListener('pointerleave', () => {
     clearTimeout(longPress);
-    recorder.stop(btn);
-  });
-  btn.addEventListener('touchcancel', () => {
-    clearTimeout(longPress);
-    recorder.stop(btn);
+    if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(btn, timer);
   });
 }
-
 bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
   if (!currentBusId) return;
   db.ref('van/messages').push({ busId:currentBusId, senderUid:currentUser.uid, senderPhone:currentUser.phone, audio:base64, timestamp:Date.now(), type:'audio' });
@@ -1064,8 +1059,6 @@ bindRecordBtn('btn-pass-record', 'pass-timer', (base64) => {
 // ============================================================
 //  司機功能
 // ============================================================
-let lastReportedIndex = -1;
-
 function initDriverPanel() {
   if (!driverData.plate) {
     const plate = prompt('請輸入車牌號碼 (例如：AB1234)');
@@ -1099,7 +1092,8 @@ function initDriverPanel() {
           div.className = 'msg-row';
           if (msg.audio) {
             const btn = document.createElement('button');
-            btn.className = 'play-audio'; btn.textContent = '▶ 語音';
+            btn.className = 'play-audio';
+            btn.textContent = '▶ 語音';
             btn.addEventListener('click', () => new Audio('data:audio/webm;base64,'+msg.audio).play());
             div.appendChild(btn);
           } else {
@@ -1167,15 +1161,17 @@ function updateDriverDB() {
     isFull: driverData.isFull,
     lastUpdate: Date.now()
   };
-  if (driverData.plate) db.ref('van/active_buses/'+driverData.plate).update(data);
+  if (driverData.plate) {
+    db.ref('van/active_buses/'+driverData.plate).update(data);
+  }
   updateDriverUI();
 }
 
+let lastReportedIndex = -1;
 async function goToNextStation() {
   const route = getRoute();
   if (driverData.stationIndex < route.length - 1) {
     driverData.stationIndex++;
-    lastReportedIndex = driverData.stationIndex;
     updateDriverDB();
     const currentStation = route[driverData.stationIndex];
     const nextIdx = driverData.stationIndex + 1;
@@ -1190,7 +1186,6 @@ async function goToNextStation() {
     showToast('已到總站，自動調頭');
     driverData.direction = driverData.direction === 0 ? 1 : 0;
     driverData.stationIndex = 0;
-    lastReportedIndex = -1;
     updateDriverDB();
     speakCantonese('已調頭，返回起點');
   }
@@ -1199,7 +1194,6 @@ async function goToPrevStation() {
   const route = getRoute();
   if (driverData.stationIndex > 0) {
     driverData.stationIndex--;
-    lastReportedIndex = driverData.stationIndex;
     updateDriverDB();
     const currentStation = route[driverData.stationIndex];
     const nextIdx = driverData.stationIndex + 1;
@@ -1229,7 +1223,11 @@ document.getElementById('d-full-btn').addEventListener('click', function() {
   if (!driverData.isActive) { showToast('請先開始當值'); return; }
   driverData.isFull = !driverData.isFull;
   updateDriverDB();
-  if (driverData.isFull) { speakCantonese('滿座，唔該晒'); } else { speakCantonese('已取消滿座'); }
+  if (driverData.isFull) {
+    speakCantonese('滿座，唔該晒');
+  } else {
+    speakCantonese('已取消滿座');
+  }
 });
 document.getElementById('d-car-btn').addEventListener('click', () => {
   driverData.carSeats = driverData.carSeats===16 ? 19 : 16;
@@ -1250,7 +1248,7 @@ document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   showToast('已切換路線');
 });
 
-// ===== GPS 觸發距離改為 100 米 =====
+// ===== 真實 GPS =====
 document.getElementById('start-gps').addEventListener('click', () => {
   if (!driverData.plate) { showToast('請先設定車牌'); return; }
   if (!navigator.geolocation) { showToast('瀏覽器不支援 GPS'); return; }
@@ -1260,12 +1258,16 @@ document.getElementById('start-gps').addEventListener('click', () => {
       const coords = getCoords();
       const route = getRoute();
       if (!coords || coords.length === 0) return;
-      let minDist = Infinity, nearestIdx = 0;
+      let minDist = Infinity;
+      let nearestIdx = 0;
       for (let i = 0; i < coords.length; i++) {
         const d = calcDistance(position.coords.latitude, position.coords.longitude, coords[i].lat, coords[i].lng);
-        if (d < minDist) { minDist = d; nearestIdx = i; }
+        if (d < minDist) {
+          minDist = d;
+          nearestIdx = i;
+        }
       }
-      if (minDist < 100 && nearestIdx !== lastReportedIndex) {
+      if (minDist < 50 && nearestIdx !== lastReportedIndex) {
         lastReportedIndex = nearestIdx;
         driverData.stationIndex = nearestIdx;
         updateDriverDB();
@@ -1287,7 +1289,10 @@ document.getElementById('start-gps').addEventListener('click', () => {
       }
       document.getElementById('d-gps-status').textContent = `📍 GPS 定位中 (距離最近站點 ${Math.round(minDist)}m)`;
     },
-    (error) => { console.warn('GPS 錯誤:', error); showToast('GPS 定位中，請確保已開啟 GPS'); },
+    (error) => {
+      console.warn('GPS 錯誤:', error);
+      showToast('GPS 定位中，請確保已開啟 GPS');
+    },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
   );
   driverData.isActive = true;
@@ -1308,14 +1313,10 @@ document.getElementById('stop-gps').addEventListener('click', () => {
   showToast('🔴 已停止當值');
   speakCantonese('已停止當值');
 });
-window.addEventListener('beforeunload', () => {
-  if (gpsWatchId) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
-  if (driverData.plate && driverData.isActive) {
-    db.ref('van/active_buses/' + driverData.plate).update({ isActive: false, lastUpdate: Date.now() });
-  }
-});
 
-// 司機訊息按鈕
+// ============================================================
+//  司機訊息
+// ============================================================
 document.getElementById('btn-driver-send').addEventListener('click', () => {
   const input = document.getElementById('driver-msg-input');
   const text = input.value.trim();
@@ -1366,121 +1367,515 @@ bindRecordBtn('btn-driver-record-overlay', 'driver-timer-overlay', (base64) => {
 });
 
 // ============================================================
-//  對講機、管理後台等 (保留原有完整邏輯)
+//  對講機
 // ============================================================
-// 此處為節省篇幅，實際已包含全部管理功能，與之前修復版本相同，請放心使用。
-// 以下為主要功能保留，無刪減。
-
-// (為避免代碼過長，此處省略但實際檔案中已包含完整 admin panel 邏輯，與之前修復版相同)
-// 若需完整，請參考之前整合的完整版，此處不再重複貼上千行。
-
-// ============================================================
-//  手勢導航（在司機和乘客頁面 header 上滑/下滑切換頁面）
-// ============================================================
-const gesturePages = ['view-lobby', 'view-passenger-list', 'view-passenger', 'view-driver'];
-let touchStartY = 0;
-let touchHandled = false;
-
-document.addEventListener('touchstart', function(e) {
-  // 只響應單點觸摸
-  if (e.touches.length !== 1) return;
-  // 檢查是否在 header 區域內
-  const header = document.querySelector('.header');
-  if (header && header.contains(e.target)) {
-    touchStartY = e.touches[0].clientY;
-    touchHandled = false;
-  }
-}, { passive: false });
-
-document.addEventListener('touchend', function(e) {
-  if (touchHandled) return;
-  const activeView = document.querySelector('.view.active');
-  if (!activeView) return;
-  // 只處理在 header 區域內開始的觸摸
-  const header = document.querySelector('.header');
-  if (!header || !header.contains(e.target)) return;
-
-  const touchEndY = e.changedTouches[0].clientY;
-  const deltaY = touchStartY - touchEndY;
-  const absDelta = Math.abs(deltaY);
-  if (absDelta < 60) return; // 靈敏度
-
-  const currentId = activeView.id;
-  // 只對指定頁面生效
-  if (!gesturePages.includes(currentId)) return;
-
-  const currentIndex = gesturePages.indexOf(currentId);
-  let nextIndex;
-  if (deltaY > 0) {
-    // 向上滑（手指由下向上）→ 下一頁
-    nextIndex = currentIndex + 1;
-    if (nextIndex >= gesturePages.length) nextIndex = 0;
-  } else {
-    // 向下滑（手指由上向下）→ 上一頁
-    nextIndex = currentIndex - 1;
-    if (nextIndex < 0) nextIndex = gesturePages.length - 1;
-  }
-
-  touchHandled = true;
-  const targetViewId = gesturePages[nextIndex];
-  if (targetViewId === 'view-passenger-list') {
-    showView('view-passenger-list');
-    loadBusList();
-  } else if (targetViewId === 'view-driver') {
-    showView('view-driver');
-    initDriverPanel();
-    initWalkieTalkie();
-  } else if (targetViewId === 'view-passenger') {
-    // 如果有追蹤中的車輛，則顯示追蹤頁，否則返回列表
-    if (currentBusId) {
-      showView('view-passenger');
-    } else {
-      showView('view-passenger-list');
-      loadBusList();
+function initWalkieTalkie() {
+  if (!driverData.plate) return;
+  updateWalkieTargets();
+  if (walkieRef) walkieRef.off();
+  walkieRef = db.ref('van/walkie_talkie').orderByChild('timestamp').limitToLast(50);
+  walkieRef.on('value', snap => {
+    const container = document.getElementById('walkie-messages');
+    let html = '';
+    snap.forEach(child => {
+      const msg = child.val();
+      if (msg.target === 'all' || msg.target === driverData.plate || msg.senderPlate === driverData.plate) {
+        const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
+        const sender = msg.senderPlate || '未知司機';
+        html += `<div style="padding:4px 0;border-bottom:1px solid #333;font-size:14px;">
+          <span style="color:#888;">[${time}]</span>
+          <strong>${sender}</strong>:
+          ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 語音</button>` : msg.text}
+        </div>`;
+      }
+    });
+    container.innerHTML = html || '<div style="color:#888;font-size:14px;">暫無對講機訊息</div>';
+  });
+}
+function updateWalkieTargets() {
+  const select = document.getElementById('walkie-target');
+  db.ref('van/active_buses').once('value', snap => {
+    const data = snap.val() || {};
+    let html = '<option value="all">📢 全部司機</option>';
+    for (const plate in data) {
+      if (plate !== driverData.plate && Date.now() - data[plate].lastUpdate < 60000) {
+        html += `<option value="${plate}">🚐 ${plate}</option>`;
+      }
     }
-  } else {
-    showView(targetViewId);
-  }
-}, { passive: false });
+    select.innerHTML = html;
+    document.getElementById('walkie-target-display').textContent = '廣播給：全部司機';
+    select.addEventListener('change', function() {
+      document.getElementById('walkie-target-display').textContent = this.value === 'all' ? '廣播給：全部司機' : `廣播給：${this.value}`;
+    });
+  });
+}
+document.getElementById('walkie-refresh-targets').addEventListener('click', updateWalkieTargets);
+bindRecordBtn('btn-walkie-record', 'walkie-timer', (base64) => {
+  const target = document.getElementById('walkie-target').value;
+  if (!driverData.plate) { showToast('請先設定車牌'); return; }
+  db.ref('van/walkie_talkie').push({
+    senderUid: currentUser.uid,
+    senderPhone: currentUser.phone,
+    senderPlate: driverData.plate,
+    target: target,
+    audio: base64,
+    timestamp: Date.now(),
+    type: 'walkie_audio'
+  }).then(() => showToast('對講機語音已發送'));
+});
 
 // ============================================================
-//  閒置返回（司機頁面延長至5分鐘，其他15秒）
+//  管理後台
+// ============================================================
+function loadAdminPanel() {
+  db.ref('van/active_buses').on('value', snap => {
+    const data = snap.val() || {};
+    let count = 0, totalPass = 0;
+    for (const plate in data) {
+      if (Date.now() - data[plate].lastUpdate < 60000) {
+        count++;
+        totalPass += (data[plate].passengerCount || 0);
+      }
+    }
+    document.getElementById('admin-active-count').textContent = count;
+    document.getElementById('admin-passenger-count').textContent = totalPass;
+  });
+
+  if (adminMsgRef) adminMsgRef.off();
+  adminMsgRef = db.ref('van/messages').orderByChild('timestamp').limitToLast(100);
+  adminMsgRef.on('value', snap => {
+    const container = document.getElementById('admin-msg-list');
+    let html = '';
+    let msgCount = 0;
+    snap.forEach(child => {
+      const msg = child.val();
+      msgCount++;
+      const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
+      const sender = msg.senderPhone || '未知';
+      const busId = msg.busId || '廣播';
+      html += `<div class="admin-item" style="border-left-color:${msg.audio?'var(--orange)':'var(--blue)'};padding:8px 10px;">
+        <div class="info">[${time}] <strong>${busId}</strong> (${sender})</div>
+        <div style="font-size:15px;">${msg.audio ? '🎤 [語音訊息]' : msg.text}</div>
+        ${msg.audio ? `<button class="play-audio" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 播放</button>` : ''}
+        <button class="btn btn-secondary" style="width:auto;padding:4px 10px;font-size:13px;margin-top:4px;" onclick="db.ref('van/messages/'+'${child.key}').remove();showToast('已刪除')">🗑️</button>
+      </div>`;
+    });
+    container.innerHTML = html || '<div style="color:#888;text-align:center;padding:12px;font-size:16px;">暫無訊息</div>';
+    document.getElementById('admin-msg-count').textContent = msgCount;
+  });
+
+  loadDeviceList();
+  loadBans();
+  loadAdminAnnounce();
+
+  // ===== 後台按鈕事件綁定 =====
+  document.getElementById('btn-ban-phone').addEventListener('click', function() {
+    const phone = document.getElementById('admin-ban-phone').value.trim();
+    if (!phone) { showToast('請輸入電話號碼'); return; }
+    db.ref('van/banned_drivers/'+phone).set(true);
+    document.getElementById('admin-ban-phone').value = '';
+    showToast('已封鎖司機 ' + phone);
+  });
+
+  document.getElementById('btn-ban-passenger').addEventListener('click', function() {
+    const name = document.getElementById('admin-ban-pass').value.trim();
+    if (!name) { showToast('請輸入名稱'); return; }
+    db.ref('van/banned_passengers/'+name).set(true);
+    document.getElementById('admin-ban-pass').value = '';
+    showToast('已封鎖乘客 ' + name);
+  });
+
+  document.getElementById('btn-kick-vehicle').addEventListener('click', function() {
+    const id = document.getElementById('admin-kick-vehicle').value.trim();
+    if (!id) { showToast('請輸入車牌或電話'); return; }
+    const clear = document.getElementById('admin-kick-clear-msgs').checked;
+    db.ref('van/active_buses').once('value', snap => {
+      const data = snap.val() || {};
+      let found = false;
+      for (const plate in data) {
+        if (plate === id || (data[plate].phone && data[plate].phone === id)) {
+          db.ref('van/active_buses/'+plate).remove();
+          if (clear) {
+            db.ref('van/messages').orderByChild('busId').equalTo(plate).once('value', s => {
+              s.forEach(child => child.ref.remove());
+            });
+          }
+          found = true;
+          showToast('已踢走車輛 ' + plate);
+          document.getElementById('admin-kick-status').textContent = '✅ 已踢走 ' + plate;
+          break;
+        }
+      }
+      if (!found) showToast('找不到車輛');
+    });
+    document.getElementById('admin-kick-vehicle').value = '';
+  });
+
+  document.getElementById('btn-kick-passenger').addEventListener('click', function() {
+    const name = document.getElementById('admin-kick-passenger').value.trim();
+    if (!name) { showToast('請輸入名稱或電話'); return; }
+    const clear = document.getElementById('admin-kick-clear-msgs').checked;
+    db.ref('van/messages').orderByChild('senderPhone').equalTo(name).once('value', snap => {
+      let count = 0;
+      snap.forEach(child => {
+        if (clear) child.ref.remove();
+        count++;
+      });
+      showToast('已處理 ' + count + ' 條訊息');
+      document.getElementById('admin-kick-status').textContent = '✅ 已移除乘客 ' + name + ' 嘅 ' + count + ' 條訊息';
+    });
+    document.getElementById('admin-kick-passenger').value = '';
+  });
+
+  document.getElementById('btn-publish-announce').addEventListener('click', function() {
+    const text = document.getElementById('admin-announce-text').value.trim();
+    if (!text) { showToast('請輸入公告內容'); return; }
+    db.ref('van/announcements').push({
+      text: text,
+      timestamp: Date.now(),
+      publisher: currentUser.phone || 'admin'
+    }).then(() => {
+      document.getElementById('admin-announce-text').value = '';
+      showToast('公告已發佈');
+      checkAnnounce();
+    });
+  });
+
+  document.getElementById('btn-clear-announce').addEventListener('click', function() {
+    if (!confirm('清除所有公告？')) return;
+    db.ref('van/announcements').remove();
+    showToast('已清除公告');
+  });
+
+  document.getElementById('btn-admin-broadcast-send').addEventListener('click', function() {
+    const input = document.getElementById('admin-broadcast-input');
+    const text = input.value.trim();
+    const target = document.getElementById('admin-broadcast-target').value.trim();
+    if (!text) { showToast('請輸入訊息'); return; }
+    const msgData = {
+      text: text,
+      senderUid: 'admin',
+      senderPhone: '👑 ' + (currentUser.phone || '管理員'),
+      timestamp: Date.now(),
+      type: 'text',
+      isAdmin: true
+    };
+    if (target) {
+      msgData.busId = target;
+      db.ref('van/messages').push(msgData).then(() => {
+        input.value = '';
+        showToast('已發送給 ' + target);
+      });
+    } else {
+      db.ref('van/active_buses').once('value', snap => {
+        const data = snap.val() || {};
+        let count = 0;
+        for (const plate in data) {
+          if (Date.now() - data[plate].lastUpdate < 60000) {
+            const copy = { ...msgData, busId: plate };
+            db.ref('van/messages').push(copy);
+            count++;
+          }
+        }
+        input.value = '';
+        showToast('已廣播給 ' + count + ' 輛車');
+        document.getElementById('admin-broadcast-status').textContent = '✅ 已廣播給 ' + count + ' 輛車';
+      });
+    }
+  });
+
+  document.getElementById('btn-broadcast-target-all').addEventListener('click', function() {
+    document.getElementById('admin-broadcast-target').value = '';
+    showToast('已設為全部車輛');
+  });
+
+  document.getElementById('btn-clear-walkie').addEventListener('click', function() {
+    if (!currentUser.isAdmin) { showToast('權限不足'); return; }
+    if (!confirm('⚠️ 確定清除所有對講機訊息？')) return;
+    db.ref('van/walkie_talkie').remove().then(() => {
+      showToast('✅ 已清除所有對講機訊息');
+    });
+  });
+
+  bindRecordBtn('btn-admin-walkie-record', 'admin-walkie-timer', (base64) => {
+    const target = document.getElementById('admin-walkie-target')?.value || 'all';
+    if (!currentUser.isAdmin) { showToast('權限不足'); return; }
+    db.ref('van/walkie_talkie').push({
+      senderUid: currentUser.uid,
+      senderPhone: '👑 ' + currentUser.phone,
+      senderPlate: '管理員',
+      target: target,
+      audio: base64,
+      timestamp: Date.now(),
+      type: 'walkie_audio'
+    }).then(() => showToast('管理員對講機語音已發送'));
+  });
+
+  bindRecordBtn('btn-admin-announce-record', 'admin-announce-timer', (base64) => {
+    db.ref('van/announcements').push({
+      audio: base64,
+      timestamp: Date.now(),
+      publisher: currentUser.phone || 'admin'
+    }).then(() => {
+      showToast('語音公告已發佈');
+      checkAnnounce();
+    });
+  });
+
+  bindRecordBtn('btn-admin-broadcast-record', 'admin-broadcast-timer', (base64) => {
+    const target = document.getElementById('admin-broadcast-target').value.trim();
+    const msgData = {
+      audio: base64,
+      senderUid: 'admin',
+      senderPhone: '👑 ' + (currentUser.phone || '管理員'),
+      timestamp: Date.now(),
+      type: 'audio',
+      isAdmin: true
+    };
+    if (target) {
+      msgData.busId = target;
+      db.ref('van/messages').push(msgData).then(() => showToast('語音已發送給 ' + target));
+    } else {
+      db.ref('van/active_buses').once('value', snap => {
+        const data = snap.val() || {};
+        let count = 0;
+        for (const plate in data) {
+          if (Date.now() - data[plate].lastUpdate < 60000) {
+            const copy = { ...msgData, busId: plate };
+            db.ref('van/messages').push(copy);
+            count++;
+          }
+        }
+        showToast('語音已廣播給 ' + count + ' 輛車');
+      });
+    }
+  });
+
+  document.querySelectorAll('.admin-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+      this.classList.add('active');
+      document.getElementById('admin-section-' + this.dataset.tab).classList.add('active');
+      if (this.dataset.tab === 'devices') loadDeviceList();
+      if (this.dataset.tab === 'walkie') { initAdminWalkie(); updateAdminWalkieTargets(); }
+    });
+  });
+}
+
+function loadDeviceList() {
+  const container = document.getElementById('admin-device-list');
+  db.ref('user_devices').on('value', snap => {
+    const data = snap.val() || {};
+    let html = '';
+    for (const uid in data) {
+      const user = data[uid];
+      const latest = user.latest || {};
+      const deviceName = latest.device ? (latest.device.model || 'Unknown') : 'Unknown';
+      const osName = latest.os ? (latest.os.name || 'Unknown') : 'Unknown';
+      const browserName = latest.browser ? (latest.browser.name || 'Unknown') : 'Unknown';
+      const phone = user.phone || '無電話';
+      const role = user.role || '未知角色';
+      const lastLogin = user.lastLogin ? new Date(user.lastLogin).toLocaleString('zh-HK') : '未知';
+      const historyCount = (user.history || []).length;
+      html += `<div class="admin-item" style="border-left-color:var(--gold);padding:10px;">
+        <div class="title">📱 ${deviceName}</div>
+        <div class="info">
+          <strong>UID:</strong> ${uid.substring(0,12)}...<br>
+          <strong>電話:</strong> ${phone} | <strong>角色:</strong> ${role}<br>
+          <strong>系統:</strong> ${osName} | <strong>瀏覽器:</strong> ${browserName}<br>
+          <strong>上次登入:</strong> ${lastLogin} | <strong>設備記錄:</strong> ${historyCount} 部
+        </div>
+        <button class="btn btn-secondary" style="width:auto;padding:4px 12px;font-size:13px;margin-top:4px;" onclick="showDeviceHistory('${uid}')">📋 查看歷史</button>
+      </div>`;
+    }
+    container.innerHTML = html || '<div style="color:#888;text-align:center;padding:12px;">暫無使用者設備資料</div>';
+  });
+}
+window.showDeviceHistory = function(uid) {
+  db.ref('user_devices/' + uid).once('value', snap => {
+    const data = snap.val();
+    if (!data) { showToast('無資料'); return; }
+    const history = data.history || [];
+    let msg = '🛡️ 設備歷史紀錄\n';
+    msg += `電話: ${data.phone}\n`;
+    msg += `角色: ${data.role}\n`;
+    msg += `共 ${history.length} 部裝置\n\n`;
+    history.forEach((item, idx) => {
+      const info = item.deviceInfo || {};
+      const device = info.device || {};
+      const os = info.os || {};
+      const browser = info.browser || {};
+      const time = item.timestamp ? new Date(item.timestamp).toLocaleString('zh-HK') : '未知';
+      msg += `${idx+1}. ${device.model||'未知'} (${os.name||'未知'})\n`;
+      msg += `   ${browser.name||'未知'} · ${time}\n`;
+    });
+    alert(msg);
+  });
+};
+
+function loadBans() {
+  db.ref('van/banned_drivers').on('value', snap => {
+    const data = snap.val() || {};
+    let html = '';
+    for (const phone in data) {
+      html += `<span class="badge badge-red" style="font-size:15px;padding:6px 14px;margin:3px;">${phone} <span onclick="db.ref('van/banned_drivers/'+'${phone}').remove();showToast('已解除')" style="cursor:pointer;">✕</span></span>`;
+    }
+    document.getElementById('admin-banned-phones').innerHTML = html || '無';
+  });
+  db.ref('van/banned_passengers').on('value', snap => {
+    const data = snap.val() || {};
+    let html = '';
+    for (const name in data) {
+      html += `<span class="badge badge-red" style="font-size:15px;padding:6px 14px;margin:3px;">${name} <span onclick="db.ref('van/banned_passengers/'+'${name}').remove();showToast('已解除')" style="cursor:pointer;">✕</span></span>`;
+    }
+    document.getElementById('admin-banned-passengers').innerHTML = html || '無';
+  });
+}
+
+function loadAdminAnnounce() {
+  db.ref('van/announcements').orderByChild('timestamp').limitToLast(20).on('value', snap => {
+    const container = document.getElementById('admin-announce-list');
+    let html = '';
+    snap.forEach(child => {
+      const ann = child.val();
+      const isAudio = ann.audio ? true : false;
+      html += `<div class="admin-item" style="border-left-color:var(--gold);padding:8px 10px;">
+        <div class="info">${new Date(ann.timestamp).toLocaleString('zh-HK')}</div>
+        <div style="font-size:15px;">${isAudio ? '🎤 [語音公告]' : ann.text}</div>
+        ${isAudio ? `<button class="play-audio" onclick="new Audio('data:audio/webm;base64,${ann.audio}').play()">▶ 播放</button>` : ''}
+        <button class="btn btn-secondary" style="width:auto;padding:4px 10px;font-size:13px;" onclick="db.ref('van/announcements/'+'${child.key}').remove();showToast('已刪除')">🗑️</button>
+      </div>`;
+    });
+    container.innerHTML = html || '<div style="color:#888;padding:8px;font-size:15px;">暫無公告</div>';
+  });
+}
+
+// ============================================================
+//  管理員對講機
+// ============================================================
+function initAdminWalkie() {
+  if (!currentUser.isAdmin) return;
+  updateAdminWalkieTargets();
+  if (adminWalkieRef) adminWalkieRef.off();
+  adminWalkieRef = db.ref('van/walkie_talkie').orderByChild('timestamp').limitToLast(50);
+  adminWalkieRef.on('value', snap => {
+    const container = document.getElementById('admin-walkie-messages');
+    let html = '';
+    snap.forEach(child => {
+      const msg = child.val();
+      const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
+      const sender = msg.senderPlate || '未知司機';
+      const target = msg.target === 'all' ? '📢全部' : msg.target;
+      html += `<div style="padding:4px 0;border-bottom:1px solid #333;font-size:14px;">
+        <span style="color:#888;">[${time}]</span>
+        <strong>${sender}</strong> → ${target}:
+        ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 語音</button>` : msg.text}
+      </div>`;
+    });
+    container.innerHTML = html || '<div style="color:#888;font-size:14px;">暫無對講機訊息</div>';
+  });
+}
+function updateAdminWalkieTargets() {
+  const select = document.getElementById('admin-walkie-target');
+  if (!select) return;
+  db.ref('van/active_buses').once('value', snap => {
+    const data = snap.val() || {};
+    let html = '<option value="all">📢 全部司機</option>';
+    for (const plate in data) {
+      if (Date.now() - data[plate].lastUpdate < 60000) {
+        html += `<option value="${plate}">🚐 ${plate}</option>`;
+      }
+    }
+    select.innerHTML = html;
+  });
+}
+document.getElementById('admin-walkie-refresh').addEventListener('click', updateAdminWalkieTargets);
+
+// ============================================================
+//  返回大堂
+// ============================================================
+document.getElementById('btn-back-admin').addEventListener('click', () => showView('view-lobby'));
+document.getElementById('btn-clear-all-msgs').addEventListener('click', function() {
+  if (!confirm('⚠️ 確定清除所有訊息？')) return;
+  db.ref('van/messages').remove();
+  showToast('已清除全部訊息');
+});
+
+// ============================================================
+//  ⭐ 閒置 15 秒返回（只限司機頁面）
 // ============================================================
 let idleTimer = null;
-function resetIdleTimer() {
+let isIdleTimerRunning = false;
+
+function startIdleTimer() {
+  // 清除舊計時器
   clearTimeout(idleTimer);
-  const activeView = document.querySelector('.view.active');
-  if (!activeView) return;
-  const idleTime = activeView.id === 'view-driver' ? 300000 : 15000;
-  idleTimer = setTimeout(() => {
-    showView('view-passenger-list');
-    loadBusList();
-    showToast('閒置後自動返回乘客頁面');
-  }, idleTime);
+  isIdleTimerRunning = false;
+  
+  // 只喺司機頁面 active 時啟動
+  if (document.getElementById('view-driver').classList.contains('active')) {
+    isIdleTimerRunning = true;
+    idleTimer = setTimeout(function() {
+      // 再次確認仍然喺司機頁面
+      if (document.getElementById('view-driver').classList.contains('active')) {
+        showView('view-passenger-list');
+        loadBusList();
+        showToast('閒置 15 秒，自動返回乘客頁面');
+        isIdleTimerRunning = false;
+      }
+    }, 15000);
+  }
 }
+
+function resetIdleTimer() {
+  // 如果計時器正在運行，重設
+  if (isIdleTimerRunning || document.getElementById('view-driver').classList.contains('active')) {
+    clearTimeout(idleTimer);
+    isIdleTimerRunning = false;
+    startIdleTimer();
+  }
+}
+
+// 監聽司機頁面切換
+const driverViewElement = document.getElementById('view-driver');
+const idleObserver = new MutationObserver(function() {
+  if (driverViewElement.classList.contains('active')) {
+    // 進入司機頁面，啟動計時器
+    startIdleTimer();
+  } else {
+    // 離開司機頁面，清除計時器
+    clearTimeout(idleTimer);
+    isIdleTimerRunning = false;
+  }
+});
+idleObserver.observe(driverViewElement, { attributes: true, attributeFilter: ['class'] });
+
+// 監聽所有使用者操作（只喺司機頁面 active 時重設計時器）
 document.addEventListener('touchstart', resetIdleTimer);
 document.addEventListener('click', resetIdleTimer);
 document.addEventListener('mousemove', resetIdleTimer);
 
 // ============================================================
-//  公告系統 (listener leak 修復)
+//  公告系統
 // ============================================================
 function checkAnnounce() {
-  if (announceListenerRef) announceListenerRef.off();
-  announceListenerRef = db.ref('van/announcements').limitToLast(1);
-  announceListenerRef.on('value', snap => {
+  db.ref('van/announcements').limitToLast(1).on('value', snap => {
     if (snap.val()) {
       document.getElementById('floating-announce-btn').classList.add('has-new');
       document.getElementById('announce-bell').classList.add('has-announce');
       let latest = null;
       snap.forEach(child => { latest = child.val(); });
-      if (latest) document.getElementById('announce-modal-text').textContent = latest.text || '🎤 語音公告（請播放）';
+      if (latest) {
+        document.getElementById('announce-modal-text').textContent = latest.text || '🎤 語音公告（請播放）';
+      }
     } else {
       document.getElementById('floating-announce-btn').classList.remove('has-new');
       document.getElementById('announce-bell').classList.remove('has-announce');
     }
   });
 }
+
 function loadAnnounceList() {
   const container = document.getElementById('announce-list-content');
   db.ref('van/announcements').orderByChild('timestamp').limitToLast(20).once('value', snap => {
@@ -1497,37 +1892,34 @@ function loadAnnounceList() {
     container.innerHTML = html || '<div style="text-align:center;color:#888;padding:20px;font-size:18px;">暫無公告</div>';
   });
 }
-function cleanupAllListeners() {
-  if (announceListenerRef) announceListenerRef.off();
-  if (deviceListRef) deviceListRef.off();
-  if (adminMsgRef) adminMsgRef.off();
-  if (busListRef) busListRef.off();
-  if (passengerMsgRef) passengerMsgRef.off();
-  if (driverMsgRef) driverMsgRef.off();
-  if (walkieRef) walkieRef.off();
-  if (adminWalkieRef) adminWalkieRef.off();
-}
 
-// 公告事件
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('floating-announce-btn').addEventListener('click', function(e) {
-    e.preventDefault(); e.stopPropagation();
-    document.getElementById('announce-overlay').classList.add('show');
-    loadAnnounceList();
-  });
-  document.getElementById('announce-bell').addEventListener('click', function(e) {
-    e.preventDefault(); e.stopPropagation();
-    document.getElementById('announce-modal').classList.add('active');
-  });
-  document.getElementById('announce-modal-close').addEventListener('click', () => document.getElementById('announce-modal').classList.remove('active'));
-  document.getElementById('close-announce-overlay').addEventListener('click', () => document.getElementById('announce-overlay').classList.remove('show'));
+// ===== 公告按鈕事件 =====
+document.getElementById('floating-announce-btn').addEventListener('click', function() {
+  document.getElementById('announce-overlay').classList.add('show');
+  loadAnnounceList();
+});
+
+document.getElementById('announce-bell').addEventListener('click', function() {
+  document.getElementById('announce-modal').classList.add('active');
+});
+
+document.getElementById('announce-modal-close').addEventListener('click', function() {
+  document.getElementById('announce-modal').classList.remove('active');
+});
+
+document.getElementById('close-announce-overlay').addEventListener('click', function() {
+  document.getElementById('announce-overlay').classList.remove('show');
 });
 
 checkAnnounce();
 
-// 初始化
-setTimeout(() => { if (!currentUser.uid) openLoginModal(); }, 500);
-console.log('西鐵小巴 v9.0 · 開發者-大輝 已啟動，手勢導航已啟用，GPS 觸發距離 100m');
+// ============================================================
+//  初始化
+// ============================================================
+setTimeout(() => {
+  if (!currentUser.uid) openLoginModal();
+}, 500);
+console.log('西鐵小巴 v9.0 終極穩定版已啟動（乘客頁面無時間限制）');
 </script>
 </body>
 </html>
