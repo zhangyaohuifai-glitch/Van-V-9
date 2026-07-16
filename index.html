@@ -164,7 +164,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 
 <div class="header">
   <div class="title">西鐵小巴 v9.0</div>
-  <div class="dev-tag">開發者 - 大輝</div>
+  <div class="dev-tag" id="dev-tag">開發者 - 大輝</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
 
@@ -567,18 +567,33 @@ async function saveDeviceInfo(uid, phone, role) {
 }
 
 // ============================================================
-//  廣東話語音 (靜音按鈕即時停止)
+//  廣東話語音 + 即時靜音 (stopAllMedia)
 // ============================================================
 let preferredVoice = null;
 let voiceEnabled = true;
+
+// 終極靜音：停 speechSynthesis + 停所有 <audio>
+function stopAllMedia() {
+  // 停止語音合成
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  // 暫停頁面上所有 audio 元素
+  document.querySelectorAll('audio').forEach(audio => {
+    if (!audio.paused) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  });
+}
+
 document.getElementById('global-voice-btn').addEventListener('click', function() {
   voiceEnabled = !voiceEnabled;
   this.textContent = voiceEnabled ? '🔊' : '🔇';
   this.classList.toggle('muted');
   showToast(voiceEnabled ? '語音已開啟' : '語音已關閉');
   if (!voiceEnabled) {
-    // 即時停止所有正在播放的語音
-    window.speechSynthesis.cancel();
+    stopAllMedia();  // 即時終止所有聲音
   }
 });
 
@@ -1230,7 +1245,7 @@ document.getElementById('btn-mode-toggle').addEventListener('click', () => {
   showToast('已切換路線');
 });
 
-// ===== GPS (觸發半徑改為 100 米) =====
+// ===== GPS (觸發半徑 100 米) =====
 document.getElementById('start-gps').addEventListener('click', () => {
   if (!driverData.plate) { showToast('請先設定車牌'); return; }
   if (!navigator.geolocation) { showToast('瀏覽器不支援 GPS'); return; }
@@ -1246,7 +1261,6 @@ document.getElementById('start-gps').addEventListener('click', () => {
         const d = calcDistance(position.coords.latitude, position.coords.longitude, coords[i].lat, coords[i].lng);
         if (d < minDist) { minDist = d; nearestIdx = i; }
       }
-      // 觸發半徑改為 100 米
       if (minDist < 100 && nearestIdx !== lastReportedIndex) {
         lastReportedIndex = nearestIdx;
         driverData.stationIndex = nearestIdx;
@@ -1749,7 +1763,7 @@ checkAnnounce();
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 最終改良版已啟動 (開發者 - 大輝)');
+console.log('西鐵小巴 v9.0 終極改良版 (開發者 - 大輝) 已啟動');
 </script>
 </body>
 </html>
