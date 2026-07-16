@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>西鐵小巴 v9.0 · 終極版</title>
+<title>西鐵小巴 v9.0 · 終極修復版</title>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -106,6 +106,233 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
   position:fixed; top:0; left:0; width:100%; height:100%;
   background:rgba(0,0,0,0.95); z-index:30; display:none;
   flex-direction:column; padding:16px;
+}
+.announce-overlay.show { display:flex; }
+.announce-list {
+  flex:1; overflow-y:auto; background:#1a1a1a; border-radius:14px;
+  padding:12px; margin-top:12px;
+}
+.announce-item {
+  background:#2c2c2e; border-radius:10px; padding:12px; margin-bottom:8px;
+  border-left:3px solid var(--gold);
+}
+.announce-item .time { font-size:12px; color:#888; }
+.announce-item .text { font-size:16px; }
+
+.announce-modal {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.85); z-index:40; display:none;
+  align-items:center; justify-content:center; padding:20px;
+}
+.announce-modal.active { display:flex; }
+.announce-modal .modal-card {
+  background:#2c1a3a; border:2px solid var(--gold); border-radius:20px;
+  padding:24px; max-width:400px; width:100%; text-align:center;
+}
+.announce-modal .modal-text { font-size:22px; color:#fff; margin-bottom:12px; }
+.announce-modal .close-btn {
+  background:var(--gold); color:#000; border:none; padding:12px 24px;
+  border-radius:12px; font-size:20px; font-weight:bold; cursor:pointer;
+}
+
+.msg-overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.95); z-index:20; display:none; flex-direction:column; padding:16px;
+}
+.msg-overlay.show { display:flex; }
+.overlay-btn {
+  position:fixed; bottom:20px; right:20px; background:var(--gold); color:#000;
+  border:none; border-radius:28px; padding:16px 24px; font-weight:800;
+  font-size:22px; box-shadow:0 4px 14px rgba(255,204,0,0.3); z-index:10;
+}
+.donate-card {
+  background:#2c1a3a; border:2px solid var(--gold); border-radius:16px;
+  padding:16px; text-align:center; margin-top:8px;
+}
+.donate-card .fps-code {
+  background:#000; padding:12px; border-radius:12px; display:inline-block;
+  font-size:20px; color:var(--gold); cursor:pointer;
+}
+#voice-toggle {
+  font-size:28px !important;
+  padding:20px !important;
+  min-height:80px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="title">西鐵小巴 v9.0</div>
+  <div class="dev-tag">開發者 - 大輝</div>
+  <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
+</div>
+
+<button class="floating-announce" id="floating-announce-btn">📢</button>
+<button class="announce-bell" id="announce-bell">🔔<span class="dot-badge"></span></button>
+
+<div class="announce-overlay" id="announce-overlay">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:24px;font-weight:bold;">📢 系統公告</span>
+    <button class="btn btn-secondary" id="close-announce-overlay" style="width:auto;padding:10px 20px;font-size:18px;">✕ 關閉</button>
+  </div>
+  <div class="announce-list" id="announce-list-content">
+    <div style="text-align:center;color:#888;padding:20px;font-size:18px;">暫無公告</div>
+  </div>
+</div>
+
+<div class="announce-modal" id="announce-modal">
+  <div class="modal-card">
+    <div class="modal-text" id="announce-modal-text"></div>
+    <button class="close-btn" id="announce-modal-close">關閉</button>
+  </div>
+</div>
+
+<div class="login-modal" id="login-modal">
+  <div class="login-card">
+    <h2 style="color:var(--gold);margin-bottom:16px;font-size:28px;">🔐 登入</h2>
+    <div id="login-choice">
+      <button class="btn btn-portal" id="login-as-admin" style="font-size:24px;">👑 管理員</button>
+      <button class="btn btn-green" id="login-as-user" style="font-size:24px;">🧍 乘客/司機</button>
+    </div>
+    <div id="admin-login-form" style="display:none;">
+      <input type="text" id="admin-username" placeholder="管理員名稱" style="font-size:20px;">
+      <input type="password" id="admin-password" placeholder="密碼" style="font-size:20px;">
+      <button class="btn btn-warn" id="admin-login-btn" style="font-size:22px;">確認</button>
+      <button class="btn btn-secondary" id="admin-login-back" style="font-size:20px;">返回</button>
+      <div id="admin-login-error" style="color:var(--red);margin-top:8px;font-size:16px;"></div>
+    </div>
+    <div id="user-login-form" style="display:none;">
+      <input type="tel" id="user-phone" placeholder="電話號碼 (8位數字)" style="font-size:20px;" autocomplete="tel">
+      <button class="btn btn-green" id="user-login-btn" style="font-size:22px;">確認</button>
+      <button class="btn btn-secondary" id="user-login-back" style="font-size:20px;">返回</button>
+      <div id="user-login-error" style="color:var(--red);margin-top:8px;font-size:16px;"></div>
+    </div>
+    <button class="btn btn-secondary" id="login-cancel" style="font-size:20px;">取消</button>
+  </div>
+</div>
+
+<!-- 大堂 -->
+<div id="view-lobby" class="view active">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:22px;font-weight:bold;color:var(--gold);">📋 使用說明</span>
+      <button class="btn" style="width:auto;padding:10px 20px;background:var(--gold);color:#000;font-size:18px;" id="btn-guide-voice">🔊 聆聽教學</button>
+    </div>
+    <div style="margin-top:10px;color:#ccc;line-height:1.8;font-size:17px;">
+      🚏 司機：登入→輸入車牌→開始當值→真實GPS自動報站<br>
+      🧍 乘客：登入→揀車追蹤→開啟報站→自動同步語音<br>
+      👑 管理員：登入→全面後台管理<br>
+      📻 對講機：司機之間／管理員與司機即時通話
+    </div>
+  </div>
+  <button class="btn btn-portal" id="btn-passenger" style="font-size:26px;padding:20px;">🧍 乘客入口</button>
+  <button class="btn btn-driver" id="btn-driver" style="font-size:26px;padding:20px;">🚏 司機入口</button>
+  <button class="btn btn-warn" id="btn-generate-qr" style="font-size:24px;padding:18px;">📱 分享二維碼</button>
+  <button class="btn btn-purple" id="btn-admin-panel" style="display:none;font-size:24px;padding:18px;">👑 總管後台</button>
+  <button class="btn btn-secondary" id="btn-logout" style="font-size:22px;padding:18px;">🚪 登出</button>
+  <div class="donate-card">
+    <div style="color:var(--gold);font-size:20px;font-weight:bold;margin-bottom:8px;">☕ 支持開發者</div>
+    <div class="fps-code" id="fps-code">轉數快：122891914</div>
+    <div style="color:#aaa;font-size:14px;margin-top:6px;">點擊複製轉數快號碼</div>
+  </div>
+  <div id="qr-box" class="card" style="display:none;"></div>
+</div>
+
+<!-- 乘客列表 -->
+<div id="view-passenger-list" class="view">
+  <h2 style="text-align:center;font-size:24px;">🚐 線上小巴</h2>
+  <div id="bus-list-container" style="margin:8px 0;font-size:18px;">載入中…</div>
+  <button class="btn btn-secondary" id="btn-back-list" style="font-size:22px;padding:18px;">返回大堂</button>
+</div>
+
+<!-- 乘客追蹤 -->
+<div id="view-passenger" class="view">
+  <button id="voice-toggle" class="btn" style="background:#ff9f0a;color:#000;font-size:28px;padding:20px;min-height:80px;">🔊 開啟廣東話自動報站</button>
+  <div class="card" id="pass-data-card" style="font-size:18px;">讀取中…</div>
+  <div class="route-strip" id="pass-route-strip"></div>
+  <div class="msg-area">
+    <div class="msg-list" id="pass-msg-list"></div>
+    <div class="msg-row">
+      <button class="record-btn" id="btn-pass-record">🎤<span class="record-timer" id="pass-timer" style="position:absolute;top:-6px;right:-6px;background:#ff0000;color:#fff;border-radius:8px;padding:2px 6px;font-size:12px;display:none;">0s</span></button>
+      <input id="pass-msg-input" class="msg-input" placeholder="訊息…" style="font-size:18px;">
+      <button class="send-btn" id="btn-pass-send" style="font-size:18px;">發</button>
+    </div>
+    <button class="btn btn-secondary" style="font-size:18px;padding:12px;" id="btn-pass-clear">清除訊息</button>
+  </div>
+  <button class="btn btn-secondary" id="btn-back-track" style="font-size:22px;padding:18px;">返回列表</button>
+</div>
+
+<!-- 司機頁面 -->
+<div id="view-driver" class="view">
+  <div id="driver-panel" style="display:flex;flex-direction:column;gap:10px;">
+    <div class="card" style="text-align:center;padding:14px;">
+      <div style="font-size:18px;color:#aaa;" id="d-info">🚐 未登入 | 車牌: -</div>
+      <div style="margin:8px 0;">
+        <span class="badge badge-purple" id="d-mode-badge">繁忙時段</span>
+        <span class="badge badge-red" id="d-dir-badge">往元朗</span>
+      </div>
+      <div class="station-name" id="d-station">大棠黃泥墩</div>
+      <div class="target-station" id="d-target" style="font-size:20px;color:var(--gold);">下一站：大棠山路</div>
+      <div id="d-gps-status" style="font-size:16px;color:#888;margin-top:4px;">📍 GPS 定位中...</div>
+    </div>
+    <div class="card" style="text-align:center;padding:12px;">
+      <div style="font-size:20px;color:#aaa;">目前乘客</div>
+      <div class="big-number" id="d-pass-count">0</div>
+      <div class="row">
+        <button class="btn btn-green" id="btn-add-pass" style="font-size:28px;padding:16px;">＋ 乘客</button>
+        <button class="btn btn-red" id="btn-sub-pass" style="font-size:28px;padding:16px;">－ 乘客</button>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-portal" id="btn-prev" style="font-size:24px;padding:16px;">◀ 上一站</button>
+      <button class="btn btn-portal" id="btn-next" style="font-size:24px;padding:16px;">下一站 ▶</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="d-full-btn" style="font-size:22px;padding:16px;background:var(--green);">🚫 滿座</button>
+      <button class="btn btn-secondary" id="d-car-btn" style="font-size:22px;padding:16px;">16座</button>
+    </div>
+    <div class="row">
+      <button class="btn btn-secondary" id="btn-switch-dir" style="font-size:20px;padding:16px;">🔄 調頭</button>
+      <button class="btn" id="btn-mode-toggle" style="background:#bf5af2;font-size:20px;padding:16px;">切換路線</button>
+    </div>
+    <button class="btn btn-green" id="start-gps" style="font-size:24px;padding:18px;">🟢 開始當值 (GPS)</button>
+    <button class="btn btn-red" id="stop-gps" style="font-size:24px;padding:18px;display:none;">🔴 停止當值</button>
+    <div class="route-strip" id="d-route-strip"></div>
+    <div class="walkie-talkie">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:20px;font-weight:bold;color:var(--gold);">📻 對講機</span>
+        <span id="walkie-target-display" style="font-size:16px;color:#aaa;">廣播給：全部司機</span>
+      </div>
+      <div class="row">
+        <select id="walkie-target" style="flex:1;padding:14px;border-radius:12px;border:none;font-size:18px;background:#2c2c2e;color:#fff;">
+          <option value="all">📢 全部司機（群聊）</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="record-btn" id="btn-walkie-record" style="width:72px;height:72px;font-size:36px;">🎤<span class="record-timer" id="walkie-timer" style="position:absolute;top:-8px;right:-8px;background:#ff0000;color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;display:none;">0s</span></button>
+        <div style="flex:1;font-size:16px;color:#888;padding:8px;">長按錄音，放開發送</div>
+      </div>
+      <div id="walkie-messages" style="max-height:120px;overflow-y:auto;background:#1a1a1a;border-radius:10px;padding:8px;margin-top:8px;font-size:15px;"></div>
+    </div>
+    <div class="msg-area">
+      <div class="msg-list" id="driver-msg-list"></div>
+      <div class="msg-row">
+        <button class="record-btn" id="btn-driver-record">🎤<span class="record-timer" id="driver-timer" style="position:absolute;top:-6px;right:-6px;background:#ff0000;color:#fff;border-radius:8px;padding:2px 6px;font-size:12px;display:none;">0s</span></button>
+        <input id="driver-msg-input" class="msg-input" placeholder="廣播訊息…" style="font-size:18px;">
+        <button class="send-btn" id="btn-driver-send" style="font-size:18px;">發</button>
+      </div>
+      <button class="btn btn-secondary" style="font-size:18px;padding:12px;" id="btn-driver-clear">清除訊息</button>
+    </div>
+    <button class="btn btn-secondary" id="btn-driver-back" style="font-size:22px;padding:18px;">返回大堂</button>
+  </div>
+  <button class="overlay-btn" id="float-msg-btn" style="font-size:22px;">💬 訊息</button>
+</div>
+
+<!-- 訊息浮層 -->
+<div class="msg-overlay" id="msg-overlay">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span style="font-size:24px;font-weight:bold;">📨 乘客訊息</span  flex-direction:column; padding:16px;
 }
 .announce-overlay.show { display:flex; }
 .announce-list {
