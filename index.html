@@ -164,7 +164,8 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
 
 <div class="header">
   <div class="title">西鐵小巴 v9.0</div>
-  <div class="dev-tag" id="dev-tag">📢 終極穩定修正版</div>
+  <!-- 4. 已將副標題修正為「開發者 - 大輝」 -->
+  <div class="dev-tag" id="dev-tag">👨‍💻 開發者-大輝 · 終極穩定版</div>
   <button class="global-voice-toggle" id="global-voice-btn">🔊</button>
 </div>
 
@@ -224,8 +225,7 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     <div style="margin-top:10px;color:#ccc;line-height:1.8;font-size:17px;">
       🚏 司機：登入→輸入車牌→開始當值→真實GPS自動報站<br>
       🧍 乘客：登入→揀車追蹤→開啟報站→自動同步語音<br>
-      👑 管理員：登入→全面後台管理<br>
-      📻 對講機：司機之間／管理員與司機即時通話
+      🎙️ 對講機：司機之間／管理員與司機即時通話 <!-- 3. 對講機標誌由 📻 改為 🎙️ -->
     </div>
   </div>
   <button class="btn btn-portal" id="btn-passenger" style="font-size:26px;padding:20px;">🧍 乘客入口</button>
@@ -303,7 +303,8 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     <div class="route-strip" id="d-route-strip"></div>
     <div class="walkie-talkie">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:20px;font-weight:bold;color:var(--gold);">📻 對講機</span>
+        <!-- 3. 對講機標誌由 📻 改為 🎙️ -->
+        <span style="font-size:20px;font-weight:bold;color:var(--gold);">🎙️ 對講機</span>
         <span id="walkie-target-display" style="font-size:16px;color:#aaa;">廣播給：全部司機</span>
       </div>
       <div class="row">
@@ -359,13 +360,13 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="monitor">📡 監控</button>
       <button class="admin-tab" data-tab="devices">🛡️ 設備</button>
-      <button class="admin-tab" data-tab="walkie">📻 對講機</button>
+      <!-- 3. 對講機標誌由 📻 改為 🎙️ -->
+      <button class="admin-tab" data-tab="walkie">🎙️ 對講機</button>
       <button class="admin-tab" data-tab="bans">🚫 封鎖</button>
       <button class="admin-tab" data-tab="kick">👢 踢出</button>
       <button class="admin-tab" data-tab="announce">📢 公告</button>
       <button class="admin-tab" data-tab="broadcast">📨 廣播</button>
     </div>
-    <!-- 補齊 HTML 中缺失的 btn-clear-all-msgs 按鈕 -->
     <div class="admin-section active" id="admin-section-monitor">
       <button class="btn btn-red" id="btn-clear-all-msgs" style="margin-bottom:10px;font-size:16px;padding:12px;">🗑️ 清除所有乘客訊息</button>
       <div id="admin-msg-list" style="max-height:300px;overflow-y:auto;background:#1a1a1a;border-radius:10px;padding:8px;"></div>
@@ -373,7 +374,8 @@ body { background:var(--bg); color:#fff; height:100vh; display:flex; flex-direct
     <div class="admin-section" id="admin-section-devices"><div id="admin-device-list" style="max-height:400px;overflow-y:auto;background:#1a1a1a;border-radius:10px;padding:8px;"></div></div>
     <div class="admin-section" id="admin-section-walkie">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:18px;font-weight:700;color:var(--purple);">📻 管理員對講機</span>
+        <!-- 3. 對講機標誌由 📻 改為 🎙️ -->
+        <span style="font-size:18px;font-weight:700;color:var(--purple);">🎙️ 管理員對講機</span>
         <button class="btn btn-red" id="btn-clear-walkie" style="width:auto;padding:8px 16px;font-size:14px;">🗑️ 清除所有</button>
       </div>
       <div class="row">
@@ -512,6 +514,47 @@ function calcDistance(lat1, lon1, lat2, lon2) {
 }
 
 // ============================================================
+//  1. 🌟 Web Audio API 音量放大解碼播放器 (專治細車行駛嘈雜，強制放大 3 倍)
+// ============================================================
+function playBoostedAudio(base64, boostVolume = 3.0) {
+  if (!base64) return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    audioCtx.decodeAudioData(bytes.buffer, function(buffer) {
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = boostVolume; // 3倍音量增益
+      source.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      source.start(0);
+    }, function(err) {
+      console.warn('Web Audio 播放失敗，降級使用普通最大音量播放器:', err);
+      playNormalAudio(base64);
+    });
+  } catch(e) {
+    console.warn('Web Audio API 初始化失敗:', e);
+    playNormalAudio(base64);
+  }
+}
+
+function playNormalAudio(base64) {
+  const audio = new Audio('data:audio/webm;base64,' + base64);
+  audio.volume = 1.0; // 原生極限最大音量
+  audio.play().catch(e => console.error("播放音頻錯誤:", e));
+}
+
+// 註冊為全域對象，方便 onclick 直接調用
+window.playBoostedAudio = playBoostedAudio;
+
+// ============================================================
 //  設備指紋
 // ============================================================
 function collectDeviceInfo() {
@@ -602,6 +645,7 @@ function speakCantonese(text) {
   return new Promise((resolve) => {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-HK';
+    utter.volume = 1.0; // 1. 確保 TTS 的輸出音量達到 100% 極限！
     const voice = getCantoneseVoice();
     if (voice) {
       utter.voice = voice;
@@ -894,7 +938,8 @@ function trackBus(plate) {
         const btn = document.createElement('button');
         btn.className = 'play-audio';
         btn.textContent = '▶ 語音';
-        btn.addEventListener('click', () => new Audio('data:audio/webm;base64,'+msg.audio).play());
+        // 1. 使用 Web Audio API 3 倍音量播放
+        btn.addEventListener('click', () => playBoostedAudio(msg.audio, 3.0));
         div.appendChild(btn);
         div.appendChild(document.createTextNode(msg.senderPhone||''));
       } else {
@@ -973,16 +1018,21 @@ document.getElementById('btn-pass-clear').addEventListener('click', () => {
     showToast('已清除');
   });
 });
+
+// 2. 🌟 真正修復「乘客頁面返回大堂」無反應 Bug：將 showView 跳轉指回 'view-lobby' 大堂頁面！
 document.getElementById('btn-back-list').addEventListener('click', () => {
   if (busListRef) busListRef.off();
   passengerVoiceEnabled = false;
   const btn = document.getElementById('voice-toggle');
-  btn.style.background = '#ff9f0a';
-  btn.style.color = '#000';
-  btn.textContent = '🔊 開啟廣東話自動報站';
+  if (btn) {
+    btn.style.background = '#ff9f0a';
+    btn.style.color = '#000';
+    btn.textContent = '🔊 開啟廣東話自動報站';
+  }
   passengerLastStationIndex = -1;
-  showView('view-passenger-list'); loadBusList();
+  showView('view-lobby'); // 真正跳出列表，安全返回大堂！
 });
+
 document.getElementById('btn-back-track').addEventListener('click', () => {
   if (passengerMsgRef) passengerMsgRef.off();
   passengerVoiceEnabled = false;
@@ -1098,7 +1148,8 @@ function initDriverPanel() {
             const btn = document.createElement('button');
             btn.className = 'play-audio';
             btn.textContent = '▶ 語音';
-            btn.addEventListener('click', () => new Audio('data:audio/webm;base64,'+msg.audio).play());
+            // 1. 使用 Web Audio API 3 倍強效音量播放
+            btn.addEventListener('click', () => playBoostedAudio(msg.audio, 3.0));
             div.appendChild(btn);
           } else {
             div.textContent = msg.text || '(訊息)';
@@ -1386,10 +1437,11 @@ function initWalkieTalkie() {
       if (msg.target === 'all' || msg.target === driverData.plate || msg.senderPlate === driverData.plate) {
         const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
         const sender = msg.senderPlate || '未知司機';
+        // 1. onclick 使用對講機 Web Audio API 3.0 倍強效音量放大功能
         html += `<div style="padding:4px 0;border-bottom:1px solid #333;font-size:14px;">
           <span style="color:#888;">[${time}]</span>
           <strong>${sender}</strong>:
-          ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 語音</button>` : msg.text}
+          ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="window.playBoostedAudio('${msg.audio}', 3.0)">▶ 語音</button>` : msg.text}
         </div>`;
       }
     });
@@ -1457,10 +1509,11 @@ function loadAdminPanel() {
       const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
       const sender = msg.senderPhone || '未知';
       const busId = msg.busId || '廣播';
+      // 1. onclick 使用強效音量解碼器播放
       html += `<div class="admin-item" style="border-left-color:${msg.audio?'var(--orange)':'var(--blue)'};padding:8px 10px;">
         <div class="info">[${time}] <strong>${busId}</strong> (${sender})</div>
         <div style="font-size:15px;">${msg.audio ? '🎤 [語音訊息]' : msg.text}</div>
-        ${msg.audio ? `<button class="play-audio" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 播放</button>` : ''}
+        ${msg.audio ? `<button class="play-audio" onclick="window.playBoostedAudio('${msg.audio}', 3.0)">▶ 播放</button>` : ''}
         <button class="btn btn-secondary" style="width:auto;padding:4px 10px;font-size:13px;margin-top:4px;" onclick="db.ref('van/messages/'+'${child.key}').remove();showToast('已刪除')">🗑️</button>
       </div>`;
     });
@@ -1744,10 +1797,11 @@ function loadAdminAnnounce() {
     snap.forEach(child => {
       const ann = child.val();
       const isAudio = ann.audio ? true : false;
+      // 1. onclick 語音公告音量 3.0 倍放大
       html += `<div class="admin-item" style="border-left-color:var(--gold);padding:8px 10px;">
         <div class="info">${new Date(ann.timestamp).toLocaleString('zh-HK')}</div>
         <div style="font-size:15px;">${isAudio ? '🎤 [語音公告]' : ann.text}</div>
-        ${isAudio ? `<button class="play-audio" onclick="new Audio('data:audio/webm;base64,${ann.audio}').play()">▶ 播放</button>` : ''}
+        ${isAudio ? `<button class="play-audio" onclick="window.playBoostedAudio('${ann.audio}', 3.0)">▶ 播放</button>` : ''}
         <button class="btn btn-secondary" style="width:auto;padding:4px 10px;font-size:13px;" onclick="db.ref('van/announcements/'+'${child.key}').remove();showToast('已刪除')">🗑️</button>
       </div>`;
     });
@@ -1771,10 +1825,11 @@ function initAdminWalkie() {
       const time = new Date(msg.timestamp).toLocaleTimeString('zh-HK');
       const sender = msg.senderPlate || '未知司機';
       const target = msg.target === 'all' ? '📢全部' : msg.target;
+      // 1. onclick 對講機語音音量 3.0 倍放大播放
       html += `<div style="padding:4px 0;border-bottom:1px solid #333;font-size:14px;">
         <span style="color:#888;">[${time}]</span>
         <strong>${sender}</strong> → ${target}:
-        ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="new Audio('data:audio/webm;base64,${msg.audio}').play()">▶ 語音</button>` : msg.text}
+        ${msg.audio ? `<button class="play-audio" style="font-size:12px;padding:2px 8px;" onclick="window.playBoostedAudio('${msg.audio}', 3.0)">▶ 語音</button>` : msg.text}
       </div>`;
     });
     container.innerHTML = html || '<div style="color:#888;font-size:14px;">暫無對講機訊息</div>';
@@ -1813,21 +1868,17 @@ if (btnClearAllMsgs) {
 
 // ============================================================
 //  ⭐ 閒置 15 秒返回（只限司機頁面）
-//  （現在在修正後可以完美正常初始化運行！）
 // ============================================================
 let idleTimer = null;
 let isIdleTimerRunning = false;
 
 function startIdleTimer() {
-  // 清除舊計時器
   clearTimeout(idleTimer);
   isIdleTimerRunning = false;
   
-  // 只喺司機頁面 active 時啟動
   if (document.getElementById('view-driver').classList.contains('active')) {
     isIdleTimerRunning = true;
     idleTimer = setTimeout(function() {
-      // 再次確認仍然喺司機頁面
       if (document.getElementById('view-driver').classList.contains('active')) {
         showView('view-passenger-list');
         loadBusList();
@@ -1839,7 +1890,6 @@ function startIdleTimer() {
 }
 
 function resetIdleTimer() {
-  // 如果計時器正在運行，重設
   if (isIdleTimerRunning || document.getElementById('view-driver').classList.contains('active')) {
     clearTimeout(idleTimer);
     isIdleTimerRunning = false;
@@ -1851,17 +1901,14 @@ function resetIdleTimer() {
 const driverViewElement = document.getElementById('view-driver');
 const idleObserver = new MutationObserver(function() {
   if (driverViewElement.classList.contains('active')) {
-    // 進入司機頁面，啟動計時器
     startIdleTimer();
   } else {
-    // 離開司機頁面，清除計時器
     clearTimeout(idleTimer);
     isIdleTimerRunning = false;
   }
 });
 idleObserver.observe(driverViewElement, { attributes: true, attributeFilter: ['class'] });
 
-// 監聽所有使用者操作（只喺司機頁面 active 時重設計時器）
 document.addEventListener('touchstart', resetIdleTimer);
 document.addEventListener('click', resetIdleTimer);
 document.addEventListener('mousemove', resetIdleTimer);
@@ -1893,10 +1940,11 @@ function loadAnnounceList() {
     snap.forEach(child => {
       const ann = child.val();
       const isAudio = ann.audio ? true : false;
+      // 1. onclick 語音公告播放音量 3.0 倍放大
       html += `<div class="announce-item">
         <div class="time">${new Date(ann.timestamp).toLocaleString('zh-HK')}</div>
         <div class="text">${isAudio ? '🎤 [語音公告]' : ann.text}</div>
-        ${isAudio ? `<button class="play-audio" onclick="new Audio('data:audio/webm;base64,${ann.audio}').play()">▶ 播放</button>` : ''}
+        ${isAudio ? `<button class="play-audio" onclick="window.playBoostedAudio('${ann.audio}', 3.0)">▶ 播放</button>` : ''}
       </div>`;
     });
     container.innerHTML = html || '<div style="text-align:center;color:#888;padding:20px;font-size:18px;">暫無公告</div>';
@@ -1929,7 +1977,7 @@ checkAnnounce();
 setTimeout(() => {
   if (!currentUser.uid) openLoginModal();
 }, 500);
-console.log('西鐵小巴 v9.0 終極穩定版已啟動（乘客頁面無時間限制，Bug 已完美修復！）');
+console.log('西鐵小巴 v9.0 終極穩定修正版已啟動（音量3倍放大、Bug 已完美修復！）');
 </script>
 </body>
 </html>
